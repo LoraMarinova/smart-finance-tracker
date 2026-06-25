@@ -21,6 +21,7 @@ export default function App() {
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState(null)
   const [busyId, setBusyId] = useState(null)
+  const [addFormKey, setAddFormKey] = useState(0)
 
   const refresh = useCallback(async () => {
     const data = await getTransactions()
@@ -58,6 +59,7 @@ export default function App() {
           await updateTransaction(editing.id, payload)
         } else {
           await createTransaction(payload)
+          setAddFormKey((k) => k + 1)
         }
         await refresh()
         setEditing(null)
@@ -113,7 +115,7 @@ export default function App() {
       />
 
       <TransactionForm
-        key={editing ? editing.id : 'new'}
+        key={editing ? editing.id : `new-${addFormKey}`}
         editing={editing}
         onSubmit={handleSubmit}
         onCancel={handleCancelEdit}

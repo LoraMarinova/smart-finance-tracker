@@ -2,7 +2,7 @@ import { memo } from 'react'
 
 const currency = new Intl.NumberFormat(undefined, {
   style: 'currency',
-  currency: 'USD',
+  currency: 'EUR',
 })
 
 function BalanceSummary({ totalIncome, totalExpense, balance }) {

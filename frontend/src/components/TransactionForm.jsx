@@ -44,10 +44,14 @@ function TransactionForm({ editing, onSubmit, onCancel, submitting, serverError 
   const [touched, setTouched] = useState(false)
 
   const isEdit = Boolean(editing)
+  const errorMessages = touched ? Object.values(errors) : []
 
   function handleChange(event) {
     const { name, value } = event.target
-    setValues((curr) => ({ ...curr, [name]: value }))
+    const next = { ...values, [name]: value }
+    setValues(next)
+    // Once the user has attempted to submit, keep errors in sync as they type.
+    if (touched) setErrors(validate(next))
   }
 
   function handleSubmit(event) {
@@ -72,6 +76,17 @@ function TransactionForm({ editing, onSubmit, onCancel, submitting, serverError 
     <form className="form" onSubmit={handleSubmit} noValidate>
       <h2 className="form-title">{isEdit ? 'Edit Transaction' : 'Add Transaction'}</h2>
 
+      {errorMessages.length > 0 ? (
+        <div className="form-error" role="alert">
+          <strong>Could not save this transaction:</strong>
+          <ul className="form-error-list">
+            {errorMessages.map((message) => (
+              <li key={message}>{message}</li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+
       <div className="form-grid">
         <label className="field">
           <span>Type</span>
@@ -91,6 +106,7 @@ function TransactionForm({ editing, onSubmit, onCancel, submitting, serverError 
             placeholder="0.00"
             value={values.amount}
             onChange={handleChange}
+            aria-invalid={touched && Boolean(errors.amount)}
           />
           {touched && errors.amount ? (
             <span className="field-error">{errors.amount}</span>
@@ -105,6 +121,7 @@ function TransactionForm({ editing, onSubmit, onCancel, submitting, serverError 
             placeholder="e.g. Groceries, Salary"
             value={values.category}
             onChange={handleChange}
+            aria-invalid={touched && Boolean(errors.category)}
           />
           {touched && errors.category ? (
             <span className="field-error">{errors.category}</span>
