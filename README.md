@@ -91,3 +91,42 @@ The `GET` response has the shape:
 | `date`        | datetime | Optional; defaults to the current time |
 
 Invalid input returns HTTP 422 with details.
+
+## Opening the database
+
+The database is a single SQLite file at `backend/finance.db`. It is created automatically the first time the backend runs, so start the backend at least once before trying to open it. Pick whichever option is most convenient.
+
+### 1. SQLite extension in Cursor / VS Code (GUI)
+
+Install the **SQLite Viewer** extension (or "SQLite" by alexcvzz), then click `backend/finance.db` in the file explorer to browse tables and run queries inside the editor.
+
+### 2. DB Browser for SQLite (dedicated GUI)
+
+Download from [sqlitebrowser.org](https://sqlitebrowser.org/), then `File > Open Database` and select `backend/finance.db`.
+
+### 3. Python (no extra tools required)
+
+From the repo root in PowerShell:
+
+```powershell
+python -c "import sqlite3; c=sqlite3.connect('backend/finance.db'); c.row_factory=sqlite3.Row; [print(dict(r)) for r in c.execute('SELECT * FROM transactions ORDER BY date DESC')]"
+```
+
+### 4. sqlite3 command-line shell (if installed)
+
+```powershell
+sqlite3 backend\finance.db
+```
+
+```sql
+.tables
+.schema transactions
+SELECT * FROM transactions;
+.quit
+```
+
+The `sqlite3` CLI is not bundled with Windows by default; if the command is not found, use one of the options above.
+
+### 5. Through the API (no DB tool needed)
+
+With the backend running, open http://localhost:8000/docs or http://localhost:8000/api/transactions to view the data.
