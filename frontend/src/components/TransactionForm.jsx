@@ -1,63 +1,38 @@
 import { useState } from 'react'
+import { toFormState, validate } from '../validation.js'
 
-const EMPTY = {
-  type: 'expense',
-  amount: '',
-  category: '',
-  description: '',
-  date: '',
-}
-
-// Normalizes a transaction (or undefined) into form field strings. Used as lazy
-// state init; the parent remounts this form via `key` to reset between targets.
-function toFormState(transaction) {
-  if (!transaction) return EMPTY
-  return {
-    type: transaction.type ?? 'expense',
-    amount: transaction.amount != null ? String(transaction.amount) : '',
-    category: transaction.category ?? '',
-    description: transaction.description ?? '',
-    date: transaction.date ? String(transaction.date).slice(0, 10) : '',
-  }
-}
-
-function validate(values) {
-  const errors = {}
-  if (values.type !== 'income' && values.type !== 'expense') {
-    errors.type = 'Choose income or expense.'
-  }
-  const amount = Number(values.amount)
-  if (values.amount === '' || Number.isNaN(amount)) {
-    errors.amount = 'Enter an amount.'
-  } else if (amount <= 0) {
-    errors.amount = 'Amount must be greater than 0.'
-  }
-  if (!values.category.trim()) {
-    errors.category = 'Category is required.'
-  }
-  return errors
-}
-
-function TransactionForm({ editing, onSubmit, onCancel, submitting, serverError }) {
+function TransactionForm({
+  editing,
+  categories,
+  onSubmit,
+  onCancel,
+  submitting,
+  serverError,
+}) {
   const [values, setValues] = useState(() => toFormState(editing))
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState(false)
 
   const isEdit = Boolean(editing)
   const errorMessages = touched ? Object.values(errors) : []
+  const categoryOptions =
+    values.type === 'income' ? categories.income : categories.expense
 
   function handleChange(event) {
     const { name, value } = event.target
-    const next = { ...values, [name]: value }
+    const next = {
+      ...values,
+      [name]: value,
+      ...(name === 'type' ? { category: '' } : {}),
+    }
     setValues(next)
-    // Once the user has attempted to submit, keep errors in sync as they type.
-    if (touched) setErrors(validate(next))
+    if (touched) setErrors(validate(next, categories))
   }
 
   function handleSubmit(event) {
     event.preventDefault()
     setTouched(true)
-    const validationErrors = validate(values)
+    const validationErrors = validate(values, categories)
     setErrors(validationErrors)
     if (Object.keys(validationErrors).length > 0) return
 
@@ -115,14 +90,19 @@ function TransactionForm({ editing, onSubmit, onCancel, submitting, serverError 
 
         <label className="field">
           <span>Category</span>
-          <input
-            type="text"
+          <select
             name="category"
-            placeholder="e.g. Groceries, Salary"
             value={values.category}
             onChange={handleChange}
             aria-invalid={touched && Boolean(errors.category)}
-          />
+          >
+            <option value="">Select…</option>
+            {categoryOptions.map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
           {touched && errors.category ? (
             <span className="field-error">{errors.category}</span>
           ) : null}

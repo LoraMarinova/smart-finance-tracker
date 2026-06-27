@@ -1,18 +1,38 @@
 from datetime import datetime
+from decimal import Decimal
 from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, StringConstraints
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints, field_validator
+
+from constants import EXPENSE_CATEGORIES, INCOME_CATEGORIES
 
 TransactionType = Literal["income", "expense"]
+RecurringFrequency = Literal["weekly", "monthly"]
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+def _validate_category_for_type(category: str, tx_type: str) -> str:
+    allowed = INCOME_CATEGORIES if tx_type == "income" else EXPENSE_CATEGORIES
+    if category not in allowed:
+        allowed_list = ", ".join(allowed)
+        raise ValueError(f"Category must be one of: {allowed_list}")
+    return category
 
 
 class TransactionBase(BaseModel):
     type: TransactionType
-    amount: float = Field(gt=0)
+    amount: Decimal = Field(gt=0, decimal_places=2)
     category: NonEmptyStr
     description: str | None = None
     date: datetime | None = None
+
+    @field_validator("category")
+    @classmethod
+    def category_matches_type(cls, category: str, info) -> str:
+        tx_type = info.data.get("type")
+        if tx_type is not None:
+            return _validate_category_for_type(category, tx_type)
+        return category
 
 
 class TransactionCreate(TransactionBase):
@@ -28,18 +48,108 @@ class TransactionRead(BaseModel):
 
     id: int
     type: TransactionType
-    amount: float
+    amount: Decimal
     category: str
     description: str | None = None
     date: datetime
 
 
 class Stats(BaseModel):
-    total_income: float
-    total_expense: float
-    balance: float
+    total_income: Decimal
+    total_expense: Decimal
+    balance: Decimal
 
 
 class TransactionsResponse(BaseModel):
     transactions: list[TransactionRead]
     stats: Stats
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class CategoryBreakdown(BaseModel):
+    category: str
+    total: Decimal
+
+
+class MonthlyBreakdown(BaseModel):
+    month: str
+    income: Decimal
+    expense: Decimal
+
+
+class AnalyticsResponse(BaseModel):
+    stats: Stats
+    by_category: list[CategoryBreakdown]
+    by_month: list[MonthlyBreakdown]
+
+
+class BudgetBase(BaseModel):
+    category: NonEmptyStr
+    amount: Decimal = Field(gt=0, decimal_places=2)
+
+    @field_validator("category")
+    @classmethod
+    def category_is_expense(cls, category: str) -> str:
+        if category not in EXPENSE_CATEGORIES:
+            allowed_list = ", ".join(EXPENSE_CATEGORIES)
+            raise ValueError(f"Budget category must be one of: {allowed_list}")
+        return category
+
+
+class BudgetCreate(BudgetBase):
+    pass
+
+
+class BudgetRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    category: str
+    amount: Decimal
+
+
+class BudgetWithSpending(BudgetRead):
+    spent: Decimal
+    remaining: Decimal
+
+
+class RecurringBase(BaseModel):
+    type: TransactionType
+    amount: Decimal = Field(gt=0, decimal_places=2)
+    category: NonEmptyStr
+    description: str | None = None
+    frequency: RecurringFrequency
+    next_date: datetime
+
+    @field_validator("category")
+    @classmethod
+    def category_matches_type(cls, category: str, info) -> str:
+        tx_type = info.data.get("type")
+        if tx_type is not None:
+            return _validate_category_for_type(category, tx_type)
+        return category
+
+
+class RecurringCreate(RecurringBase):
+    pass
+
+
+class RecurringRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    type: TransactionType
+    amount: Decimal
+    category: str
+    description: str | None = None
+    frequency: RecurringFrequency
+    next_date: datetime
+
+
+class CategoriesResponse(BaseModel):
+    income: tuple[str, ...]
+    expense: tuple[str, ...]
+    all: tuple[str, ...]

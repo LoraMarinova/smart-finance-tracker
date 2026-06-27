@@ -29,7 +29,7 @@ function TransactionRow({ transaction, onEdit, onDelete, busy }) {
       <td className="cell-desc">{transaction.description || '—'}</td>
       <td className={amountClass}>
         {sign}
-        {currency.format(transaction.amount)}
+        {currency.format(Number(transaction.amount))}
       </td>
       <td className="cell-actions">
         <button
@@ -55,42 +55,79 @@ function TransactionRow({ transaction, onEdit, onDelete, busy }) {
 
 const MemoRow = memo(TransactionRow)
 
-function TransactionList({ transactions, onEdit, onDelete, busyId }) {
+function TransactionList({
+  transactions,
+  onEdit,
+  onDelete,
+  busyId,
+  page,
+  totalPages,
+  total,
+  onPageChange,
+}) {
   if (transactions.length === 0) {
     return (
       <div className="empty">
-        <p>No transactions yet.</p>
-        <p className="empty-hint">Add your first income or expense above.</p>
+        <p>No transactions match your filters.</p>
+        <p className="empty-hint">Add a transaction above or clear filters.</p>
       </div>
     )
   }
 
   return (
-    <div className="table-wrap">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Date</th>
-            <th>Type</th>
-            <th>Category</th>
-            <th>Description</th>
-            <th className="th-amount">Amount</th>
-            <th className="th-actions">Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {transactions.map((t) => (
-            <MemoRow
-              key={t.id}
-              transaction={t}
-              onEdit={onEdit}
-              onDelete={onDelete}
-              busy={busyId === t.id}
-            />
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Category</th>
+              <th>Description</th>
+              <th className="th-amount">Amount</th>
+              <th className="th-actions">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {transactions.map((t) => (
+              <MemoRow
+                key={t.id}
+                transaction={t}
+                onEdit={onEdit}
+                onDelete={onDelete}
+                busy={busyId === t.id}
+              />
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      {totalPages > 1 ? (
+        <div className="pagination">
+          <button
+            type="button"
+            className="btn btn--ghost btn--small"
+            disabled={page <= 1}
+            onClick={() => onPageChange(page - 1)}
+          >
+            Previous
+          </button>
+          <span className="pagination-label">
+            Page {page} of {totalPages} ({total} total)
+          </span>
+          <button
+            type="button"
+            className="btn btn--ghost btn--small"
+            disabled={page >= totalPages}
+            onClick={() => onPageChange(page + 1)}
+          >
+            Next
+          </button>
+        </div>
+      ) : (
+        <p className="pagination-label">{total} transaction{total === 1 ? '' : 's'}</p>
+      )}
+    </>
   )
 }
 

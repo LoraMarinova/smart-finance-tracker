@@ -1,3 +1,4 @@
+import os
 from collections.abc import Generator
 from pathlib import Path
 from typing import Annotated
@@ -6,12 +7,12 @@ from fastapi import Depends
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
-# The SQLite file lives alongside this module, inside the backend directory.
+from alembic import command
+from alembic.config import Config
+
 DB_PATH = Path(__file__).resolve().parent / "finance.db"
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
-# check_same_thread=False is required because FastAPI may use the connection
-# across different threads when running sync path operations in a threadpool.
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
@@ -21,9 +22,13 @@ class Base(DeclarativeBase):
     pass
 
 
-def create_db_and_tables() -> None:
-    """Create the SQLite file and all tables if they do not exist yet."""
-    Base.metadata.create_all(bind=engine)
+def run_migrations() -> None:
+    """Apply Alembic migrations so the schema stays in sync."""
+    if os.environ.get("FINANCE_TESTING") == "1":
+        return
+    alembic_cfg = Config(str(Path(__file__).resolve().parent / "alembic.ini"))
+    alembic_cfg.set_main_option("sqlalchemy.url", DATABASE_URL)
+    command.upgrade(alembic_cfg, "head")
 
 
 def get_db() -> Generator[Session, None, None]:

@@ -1,7 +1,5 @@
-const BASE = '/api/transactions'
+const BASE = '/api'
 
-// Raised when the backend returns a non-2xx response. `details` holds parsed
-// validation info (e.g. FastAPI 422 `detail`) so the UI can surface it clearly.
 export class ApiError extends Error {
   constructor(message, status, details) {
     super(message)
@@ -34,8 +32,17 @@ async function request(url, options) {
 
   if (res.status === 204) return null
 
-  let body = null
+  const contentType = res.headers.get('content-type') || ''
   const text = await res.text()
+
+  if (contentType.includes('text/csv') || contentType.includes('text/plain')) {
+    if (!res.ok) {
+      throw new ApiError(`Request failed (${res.status})`, res.status, text)
+    }
+    return text
+  }
+
+  let body = null
   if (text) {
     try {
       body = JSON.parse(text)
@@ -56,12 +63,35 @@ async function request(url, options) {
 
 const jsonHeaders = { 'Content-Type': 'application/json' }
 
-export function getTransactions() {
-  return request(BASE)
+function buildQuery(params) {
+  const search = new URLSearchParams()
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value))
+    }
+  }
+  const qs = search.toString()
+  return qs ? `?${qs}` : ''
+}
+
+export function getCategories() {
+  return request(`${BASE}/categories`)
+}
+
+export function getTransactions(filters = {}) {
+  return request(`${BASE}/transactions${buildQuery(filters)}`)
+}
+
+export function exportTransactions(filters = {}) {
+  return request(`${BASE}/transactions/export${buildQuery(filters)}`)
+}
+
+export function getAnalytics(filters = {}) {
+  return request(`${BASE}/analytics${buildQuery(filters)}`)
 }
 
 export function createTransaction(data) {
-  return request(BASE, {
+  return request(`${BASE}/transactions`, {
     method: 'POST',
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -69,7 +99,7 @@ export function createTransaction(data) {
 }
 
 export function updateTransaction(id, data) {
-  return request(`${BASE}/${id}`, {
+  return request(`${BASE}/transactions/${id}`, {
     method: 'PUT',
     headers: jsonHeaders,
     body: JSON.stringify(data),
@@ -77,5 +107,51 @@ export function updateTransaction(id, data) {
 }
 
 export function deleteTransaction(id) {
-  return request(`${BASE}/${id}`, { method: 'DELETE' })
+  return request(`${BASE}/transactions/${id}`, { method: 'DELETE' })
+}
+
+export function getBudgets(filters = {}) {
+  return request(`${BASE}/budgets${buildQuery(filters)}`)
+}
+
+export function setBudget(data) {
+  return request(`${BASE}/budgets`, {
+    method: 'PUT',
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteBudget(id) {
+  return request(`${BASE}/budgets/${id}`, { method: 'DELETE' })
+}
+
+export function getRecurring() {
+  return request(`${BASE}/recurring`)
+}
+
+export function createRecurring(data) {
+  return request(`${BASE}/recurring`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteRecurring(id) {
+  return request(`${BASE}/recurring/${id}`, { method: 'DELETE' })
+}
+
+export function postRecurring(id) {
+  return request(`${BASE}/recurring/${id}/post`, { method: 'POST' })
+}
+
+export function downloadCsv(csvText, filename = 'transactions.csv') {
+  const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
 }

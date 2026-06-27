@@ -4,30 +4,41 @@ Guidance for AI agents working in this repository.
 
 ## Project
 
-Smart Finance Tracker — a local-only, three-tier personal finance app for logging income/expenses with a real-time net balance. No authentication; runs on the developer's machine only. See [docs/PLAN.md](docs/PLAN.md) for the full design.
+Smart Finance Tracker — a local-only, three-tier personal finance app for logging income/expenses with filters, analytics, budgets, recurring templates, and CSV export. No authentication; runs on the developer's machine only. See [docs/PLAN.md](docs/PLAN.md) for the full design.
 
 ## Tech stack
 
-- Backend: FastAPI + Uvicorn, SQLAlchemy ORM, Pydantic v2 (Python 3.14)
-- Frontend: React 18 + Vite, plain `fetch` for HTTP
-- Database: SQLite file (`finance.db`), tables auto-created on startup (no migration tool)
+- Backend: FastAPI + Uvicorn, SQLAlchemy ORM, Pydantic v2, Alembic (Python 3.14)
+- Frontend: React 18 + Vite, Recharts, plain `fetch` for HTTP
+- Database: SQLite file (`finance.db`), schema via Alembic migrations on startup
+- DevOps: pytest, Vitest, ruff, Docker Compose, GitHub Actions CI
 
 ## Structure
 
-- `backend/` — `main.py` (app + CRUD endpoints + CORS), `database.py`, `models.py`, `schemas.py`, `requirements.txt`
-- `frontend/` — Vite React app: `src/App.jsx`, components, `api.js`
+- `backend/` — `main.py` (app + routes), `repository.py` (queries/aggregates), `database.py`, `models.py`, `schemas.py`, `constants.py`, `alembic/`, `tests/`
+- `frontend/` — Vite React app: `src/App.jsx`, `components/`, `api.js`, `validation.js`
 - `docs/` — project plan and notes
 
 ## API
 
-Base path `/api/transactions`. The `GET` endpoint returns both the transaction list and computed stats (`total_income`, `total_expense`, `balance`). `POST`/`PUT` validate input; `PUT`/`DELETE` return 404 for unknown IDs.
+Base path `/api`. Key endpoints:
+
+- `GET /transactions` — paginated list + filtered stats (`total_income`, `total_expense`, `balance`)
+- `GET /transactions/export` — CSV with same query filters
+- `GET /analytics` — category and monthly breakdowns
+- `GET /categories` — predefined category lists
+- `GET/PUT/DELETE /budgets` — category spending limits
+- `GET/POST/DELETE /recurring`, `POST /recurring/{id}/post` — recurring templates
+
+`POST`/`PUT` validate input; `PUT`/`DELETE` return 404 for unknown IDs.
 
 ## Conventions
 
-- The core entity is a `Transaction`: `id`, `type` ("income" | "expense"), `amount`, `category`, `description` (optional), `date`.
-- Validation lives in Pydantic schemas: `amount` must be strictly positive (`gt=0`); `type` is restricted to "income"/"expense". Invalid input returns HTTP 422.
-- Keep the UI simple and clear — refresh state after every create/update/delete so the balance stays live.
-- Do not add authentication or multi-user features; this is intentionally single-user and local.
+- Core entity: `Transaction` — `id`, `type` ("income" | "expense"), `amount` (Decimal), `category` (from predefined lists), `description` (optional), `date`
+- Categories are validated in Pydantic against `constants.py` lists
+- Amount must be strictly positive (`gt=0`); invalid input returns HTTP 422
+- Refresh UI state after every create/update/delete
+- Do not add authentication or multi-user features; this is intentionally single-user and local
 
 ## Run commands
 
@@ -43,4 +54,21 @@ Frontend (from `frontend/`):
 npm install; npm run dev
 ```
 
+Docker: `docker compose up --build` from repo root.
+
 Backend runs on `http://localhost:8000`, frontend dev server on `http://localhost:5173`.
+
+## Tests
+
+```powershell
+cd backend; pip install -r requirements-dev.txt; pytest; ruff check .
+cd frontend; npm test
+```
+
+## Definition of done
+
+- ALWAYS test your changes before telling the user the work is done. Do not claim something works without verifying it.
+- Backend changes: run `pytest` and `ruff check .` (from `backend/`) and confirm both pass.
+- Frontend changes: run `npm test` and `npm run build` (from `frontend/`) and confirm both pass.
+- If a change can't be covered by existing tests, add a test or run the relevant command/flow to verify it manually, and say exactly how you verified it.
+- If verification fails or is skipped for any reason, say so explicitly instead of implying success.
