@@ -29,6 +29,16 @@ import TransactionList from './components/TransactionList.jsx'
 
 const EMPTY_STATS = { total_income: 0, total_expense: 0, balance: 0 }
 const EMPTY_CATEGORIES = { income: [], expense: [], all: [] }
+
+function sortCategories(cats) {
+  if (!cats) return EMPTY_CATEGORIES
+  const sortAlpha = (list) => [...(list ?? [])].sort((a, b) => a.localeCompare(b))
+  return {
+    income: sortAlpha(cats.income),
+    expense: sortAlpha(cats.expense),
+    all: sortAlpha(cats.all),
+  }
+}
 const PAGE_SIZE = 20
 
 const EMPTY_FILTERS = {
@@ -136,7 +146,7 @@ function AppContent() {
     let active = true
     getCategories()
       .then((cats) => {
-        if (active) setCategories(cats ?? EMPTY_CATEGORIES)
+        if (active) setCategories(sortCategories(cats))
       })
       .catch((err) => {
         if (active) setLoadError(err.message)
