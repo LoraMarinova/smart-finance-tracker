@@ -11,6 +11,7 @@ INCOME_CATEGORIES = (
 EXPENSE_CATEGORIES = (
     "Groceries",
     "Rent",
+    "Mortgage",
     "Utilities",
     "Transport",
     "Dining Out",

@@ -15,6 +15,13 @@ function FilterBar({ filters, categories, onChange, onExport, exporting }) {
 
   return (
     <section className="filters" aria-label="Transaction filters">
+      <h2 className="section-title">Filter &amp; Search</h2>
+      <p className="panel-hint">
+        Narrow the transaction list and analytics below by type, category, date
+        range, or text. Export CSV downloads exactly what your current filters
+        show.
+      </p>
+
       <div className="filters-grid">
         <label className="field">
           <span>Type</span>
