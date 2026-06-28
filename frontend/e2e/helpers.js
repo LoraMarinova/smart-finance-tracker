@@ -21,7 +21,7 @@ async function assertE2eDatabase(request) {
 export async function clearAll(request) {
   await assertE2eDatabase(request)
 
-  const txRes = await request.get('/api/transactions?page=1&page_size=100')
+  const txRes = await request.get('/api/transactions?page=1&page_size=50')
   const txBody = await txRes.json()
   for (const tx of txBody.transactions ?? []) {
     await request.delete(`/api/transactions/${tx.id}`)

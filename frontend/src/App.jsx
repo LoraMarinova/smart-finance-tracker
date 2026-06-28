@@ -39,7 +39,8 @@ function sortCategories(cats) {
     all: sortAlpha(cats.all),
   }
 }
-const PAGE_SIZE = 20
+const DEFAULT_PAGE_SIZE = 10
+const PAGE_SIZE_OPTIONS = [10, 25, 50]
 
 const EMPTY_FILTERS = {
   type: '',
@@ -49,7 +50,7 @@ const EMPTY_FILTERS = {
   search: '',
 }
 
-function toApiFilters(filters, page) {
+function toApiFilters(filters, page, pageSize) {
   return {
     type: filters.type || undefined,
     category: filters.category || undefined,
@@ -57,7 +58,7 @@ function toApiFilters(filters, page) {
     to: filters.to ? `${filters.to}T23:59:59` : undefined,
     search: filters.search || undefined,
     page,
-    page_size: PAGE_SIZE,
+    page_size: pageSize,
   }
 }
 
@@ -79,6 +80,7 @@ function AppContent() {
     total: 0,
     total_pages: 0,
   })
+  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [analytics, setAnalytics] = useState(null)
   const [budgets, setBudgets] = useState([])
@@ -103,7 +105,7 @@ function AppContent() {
 
   const refreshTransactions = useCallback(
     async (page = pagination.page) => {
-      const data = await getTransactions(toApiFilters(filters, page))
+      const data = await getTransactions(toApiFilters(filters, page, pageSize))
       setTransactions(data?.transactions ?? [])
       setStats(data?.stats ?? EMPTY_STATS)
       setPagination({
@@ -112,7 +114,7 @@ function AppContent() {
         total_pages: data?.total_pages ?? 0,
       })
     },
-    [filters, pagination.page],
+    [filters, pageSize, pagination.page],
   )
 
   const refreshAnalytics = useCallback(async () => {
@@ -167,7 +169,7 @@ function AppContent() {
     setChartsLoading(true)
 
     Promise.all([
-      getTransactions(toApiFilters(filters, 1)),
+      getTransactions(toApiFilters(filters, 1, pageSize)),
       getAnalytics(dateFilters),
       getBudgets(dateFilters),
     ])
@@ -197,10 +199,14 @@ function AppContent() {
     return () => {
       active = false
     }
-  }, [filters, dateFilters])
+  }, [filters, dateFilters, pageSize])
 
   const handleFiltersChange = useCallback((next) => {
     setFilters(next)
+  }, [])
+
+  const handlePageSizeChange = useCallback((nextSize) => {
+    setPageSize(nextSize)
   }, [])
 
   const handlePageChange = useCallback(
@@ -277,7 +283,7 @@ function AppContent() {
   const handleExport = useCallback(async () => {
     setExporting(true)
     try {
-      const csv = await exportTransactions(toApiFilters(filters, 1))
+      const csv = await exportTransactions(toApiFilters(filters, 1, pageSize))
       downloadCsv(csv)
       showToast('CSV exported.')
     } catch (err) {
@@ -285,7 +291,7 @@ function AppContent() {
     } finally {
       setExporting(false)
     }
-  }, [filters, showToast])
+  }, [filters, pageSize, showToast])
 
   const handleSetBudget = useCallback(
     async (payload) => {
@@ -442,6 +448,9 @@ function AppContent() {
             totalPages={pagination.total_pages}
             total={pagination.total}
             onPageChange={handlePageChange}
+            pageSize={pageSize}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={handlePageSizeChange}
           />
         )}
       </section>

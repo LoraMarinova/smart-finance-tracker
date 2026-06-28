@@ -1,11 +1,35 @@
 import { describe, expect, it } from 'vitest'
-import { validate } from './validation.js'
+import { EMPTY_FORM, toFormState, validate } from './validation.js'
 
 const categories = {
   income: ['Salary', 'Freelance'],
   expense: ['Groceries', 'Rent'],
   all: ['Salary', 'Freelance', 'Groceries', 'Rent'],
 }
+
+describe('toFormState', () => {
+  it('returns empty defaults for a new form', () => {
+    expect(toFormState(null)).toEqual(EMPTY_FORM)
+  })
+
+  it('maps a transaction into editable form fields', () => {
+    expect(
+      toFormState({
+        type: 'income',
+        amount: '120.5',
+        category: 'Salary',
+        description: 'Pay',
+        date: '2026-03-15T14:30:00',
+      }),
+    ).toEqual({
+      type: 'income',
+      amount: '120.5',
+      category: 'Salary',
+      description: 'Pay',
+      date: '2026-03-15',
+    })
+  })
+})
 
 describe('validate', () => {
   it('accepts valid expense', () => {
@@ -22,12 +46,36 @@ describe('validate', () => {
     expect(errors).toEqual({})
   })
 
+  it('accepts valid income', () => {
+    const errors = validate(
+      { type: 'income', amount: '100', category: 'Salary' },
+      categories,
+    )
+    expect(errors).toEqual({})
+  })
+
+  it('rejects missing amount', () => {
+    const errors = validate(
+      { type: 'expense', amount: '', category: 'Groceries' },
+      categories,
+    )
+    expect(errors.amount).toBe('Enter an amount.')
+  })
+
   it('rejects non-positive amount', () => {
     const errors = validate(
       { type: 'expense', amount: '0', category: 'Groceries' },
       categories,
     )
-    expect(errors.amount).toBeTruthy()
+    expect(errors.amount).toBe('Amount must be greater than 0.')
+  })
+
+  it('rejects invalid transaction type', () => {
+    const errors = validate(
+      { type: 'transfer', amount: '10', category: 'Groceries' },
+      categories,
+    )
+    expect(errors.type).toBe('Choose income or expense.')
   })
 
   it('rejects income category on expense', () => {
@@ -35,7 +83,7 @@ describe('validate', () => {
       { type: 'expense', amount: '10', category: 'Salary' },
       categories,
     )
-    expect(errors.category).toBeTruthy()
+    expect(errors.category).toBe('Choose a category from the list.')
   })
 
   it('requires category', () => {
@@ -43,6 +91,6 @@ describe('validate', () => {
       { type: 'income', amount: '100', category: '  ' },
       categories,
     )
-    expect(errors.category).toBeTruthy()
+    expect(errors.category).toBe('Category is required.')
   })
 })

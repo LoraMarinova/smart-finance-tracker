@@ -52,3 +52,7 @@ npm run test:e2e
 ```
 
 If the change also touches the backend, the parent agent must run backend checks in `AGENTS.md`. Do not claim success without passing Vitest, build, and E2E when UI behavior changed.
+
+When adding frontend functionality, add tests in the relevant `*.test.js` or `e2e/*.spec.js`, run the applicable suites, and confirm the new tests pass.
+
+Also update [README.md](README.md) when setup, UI behavior, or run/test instructions change, and fix any existing tests or components that your change makes stale.

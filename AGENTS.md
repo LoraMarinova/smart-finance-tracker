@@ -4,7 +4,7 @@ Guidance for AI agents working in this repository.
 
 ## Project
 
-Smart Finance Tracker — a local-only, three-tier personal finance app for logging income/expenses with filters, analytics, budgets, recurring templates, and CSV export. No authentication; runs on the developer's machine only. See [docs/PLAN.md](docs/PLAN.md) for the full design.
+Smart Finance Tracker — a local-only, three-tier personal finance app for logging income/expenses with filters, analytics, budgets, recurring templates, and CSV export. No authentication; runs on the developer's machine only. See [README.md](README.md) for setup, run, test, and database instructions, and [docs/PLAN.md](docs/PLAN.md) for the full design.
 
 ## Tech stack
 
@@ -70,6 +70,23 @@ cd frontend; npm run test:e2e    # Playwright UI/E2E tests (needs: npx playwrigh
 - Frontend unit tests: Vitest in `frontend/src/**` (scoped to `src/`, excludes `e2e/`).
 - Frontend UI/E2E tests: Playwright specs in `frontend/e2e/`. Playwright starts dedicated servers on ports **8001/5174** with an isolated `e2e_finance.db` via `FINANCE_DB_PATH`; it must never reuse the dev backend on 8000. Helpers refuse to clear data unless `/api/health` reports `database: "e2e"`.
 
+## Tests for new functionality
+
+When you add or change behavior, **add tests in the same task** and **run them until they pass** before marking work complete.
+
+| Change type | Where to add tests |
+|-------------|-------------------|
+| API routes, validation, queries, defaults | `backend/tests/test_transactions.py` (or a new `test_<domain>.py` if the feature is a separate domain) |
+| Pure JS validation or utilities | `frontend/src/validation.test.js` or a co-located `*.test.js` next to the module |
+| User-visible flows (forms, filters, pagination, export) | `frontend/e2e/*.spec.js` (extend an existing spec when it fits) |
+
+Guidelines:
+
+- Put new tests in the **existing file/suite** for that area when one exists; match naming and style (`test_*` in pytest, `describe`/`it` or `test()` in Vitest, `test()` in Playwright).
+- Cover the new behavior: at least the happy path, plus validation or edge cases that matter (e.g. invalid input, empty state, limits).
+- Run the relevant suite after adding tests (`pytest`, `npm test`, and `npm run test:e2e` when UI behavior changed) and report pass counts including your new tests.
+- Do not ship new functionality without tests unless the user explicitly asked for no tests — and then say why in your reply.
+
 ## Definition of done
 
 **Never mark work complete without running tests yourself.** Do not claim something works without verifying it.
@@ -111,6 +128,7 @@ If you touched **both** backend and frontend, run **all** applicable suites abov
 ### Runnable app
 
 When changes affect startup, ports, proxy, or migrations, also verify:
+
 - `http://localhost:8000/api/health` responds
 - `http://localhost:5173` returns HTTP 200 (start dev servers if needed, or state that you did not verify live)
 
@@ -118,3 +136,32 @@ When changes affect startup, ports, proxy, or migrations, also verify:
 
 - Add or extend a test, **or** run a manual flow and describe exactly how you verified it.
 - If verification failed or was skipped, say so explicitly — never imply success.
+
+## Documentation and consistency
+
+When you change behavior, keep the repo accurate and coherent — do not leave stale docs or half-updated code behind.
+
+### Update README.md
+
+Update [README.md](README.md) when your changes affect anything a developer or user needs to know, including:
+
+- setup, run, stop, or test commands
+- ports, environment variables, or database paths
+- API endpoints, request/response shape, or defaults (e.g. pagination size)
+- new features, scripts, or prerequisites
+- troubleshooting notes discovered while implementing
+
+Keep edits focused: update the relevant section only; do not rewrite unrelated parts of the README.
+
+Also update [docs/PLAN.md](docs/PLAN.md) when the change is architectural or adds/removes major features.
+
+### Update existing code when necessary
+
+If your change makes old code, tests, or config wrong or misleading, fix those too in the same task — for example:
+
+- constants, defaults, or validation that no longer match
+- tests that assert outdated behavior
+- E2E helpers or Playwright config affected by API or port changes
+- agent/subagent docs (`AGENTS.md`, `.cursor/agents/`) when conventions change
+
+Do not add parallel implementations or leave dead paths; prefer updating the existing pattern in place.

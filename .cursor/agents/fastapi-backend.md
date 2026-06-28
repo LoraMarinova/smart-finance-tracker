@@ -48,3 +48,7 @@ ruff check .
 ```
 
 If the change also affects the frontend or user-visible API behavior, the parent agent must also run the frontend and E2E checks in `AGENTS.md`. Do not claim success without passing pytest and ruff.
+
+When adding backend functionality, add `test_*` cases in `backend/tests/test_transactions.py` (or the appropriate `test_<domain>.py`), run `pytest`, and confirm the new tests pass.
+
+Also update [README.md](README.md) when setup, API, defaults, or run/test instructions change, and fix any existing tests or constants that your change makes stale.

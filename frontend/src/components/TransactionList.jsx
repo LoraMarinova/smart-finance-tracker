@@ -64,6 +64,9 @@ function TransactionList({
   totalPages,
   total,
   onPageChange,
+  pageSize,
+  pageSizeOptions = [10, 25, 50],
+  onPageSizeChange,
 }) {
   if (transactions.length === 0) {
     return (
@@ -102,31 +105,49 @@ function TransactionList({
         </table>
       </div>
 
-      {totalPages > 1 ? (
-        <div className="pagination">
-          <button
-            type="button"
-            className="btn btn--ghost btn--small"
-            disabled={page <= 1}
-            onClick={() => onPageChange(page - 1)}
+      <div className="pagination">
+        <label className="page-size">
+          <span>Per page</span>
+          <select
+            value={pageSize}
+            onChange={(e) => onPageSizeChange(Number(e.target.value))}
           >
-            Previous
-          </button>
-          <span className="pagination-label">
-            Page {page} of {totalPages} ({total} total)
-          </span>
-          <button
-            type="button"
-            className="btn btn--ghost btn--small"
-            disabled={page >= totalPages}
-            onClick={() => onPageChange(page + 1)}
-          >
-            Next
-          </button>
-        </div>
-      ) : (
-        <p className="pagination-label">{total} transaction{total === 1 ? '' : 's'}</p>
-      )}
+            {pageSizeOptions.map((size) => (
+              <option key={size} value={size}>
+                {size}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        {totalPages > 1 ? (
+          <div className="pagination-controls">
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              disabled={page <= 1}
+              onClick={() => onPageChange(page - 1)}
+            >
+              Previous
+            </button>
+            <span className="pagination-label">
+              Page {page} of {totalPages}
+            </span>
+            <button
+              type="button"
+              className="btn btn--ghost btn--small"
+              disabled={page >= totalPages}
+              onClick={() => onPageChange(page + 1)}
+            >
+              Next
+            </button>
+          </div>
+        ) : null}
+
+        <span className="pagination-label">
+          {total} transaction{total === 1 ? '' : 's'}
+        </span>
+      </div>
     </>
   )
 }

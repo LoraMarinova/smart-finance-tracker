@@ -7,6 +7,16 @@ alwaysApply: true
 
 Do not tell the user the work is finished until you have **run the relevant commands yourself** and confirmed they pass.
 
+## New functionality needs new tests
+
+When adding or changing behavior, add tests in the proper suite and verify they pass:
+
+- **Backend** — `backend/tests/test_transactions.py` (or `test_<domain>.py` for a new area); run `pytest`.
+- **Frontend logic** — `frontend/src/*.test.js` (e.g. `validation.test.js`); run `npm test`.
+- **UI flows** — `frontend/e2e/*.spec.js`; run `npm run test:e2e`.
+
+Match existing naming and style. Cover happy path and important edge cases. Do not mark work done until your new tests pass.
+
 ## Required verification by change type
 
 **Backend** (`backend/`):
@@ -46,4 +56,10 @@ E2E tests use isolated ports **8001/5174** and `e2e_finance.db` — never the us
 - If a check failed or was skipped, say so explicitly — do not imply success.
 - If you could not run a check, explain why and what the user should run.
 
-See `AGENTS.md` → **Definition of done** for the canonical project checklist.
+## Documentation and consistency
+
+- **Update [README.md](README.md)** when changes affect setup, run/stop, tests, ports, API behavior, defaults, or new features. Edit only the relevant sections.
+- **Update [docs/PLAN.md](docs/PLAN.md)** for architectural or major feature changes.
+- **Fix existing code** in the same task when your change makes old defaults, tests, helpers, or config stale — do not leave misleading or broken paths behind.
+
+See `AGENTS.md` → **Definition of done**, **Tests for new functionality**, and **Documentation and consistency** for the full checklist.

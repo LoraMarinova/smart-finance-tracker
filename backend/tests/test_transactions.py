@@ -89,6 +89,36 @@ def test_delete_missing_transaction(client):
     assert res.status_code == 404
 
 
+def test_pagination_defaults_to_10_per_page(client):
+    for i in range(12):
+        client.post(
+            "/api/transactions",
+            json={"type": "expense", "amount": i + 1, "category": "Groceries"},
+        )
+
+    res = client.get("/api/transactions")
+    body = res.json()
+    assert body["page_size"] == 10
+    assert body["page"] == 1
+    assert body["total"] == 12
+    assert body["total_pages"] == 2
+    assert len(body["transactions"]) == 10
+
+    page2 = client.get("/api/transactions", params={"page": 2}).json()
+    assert len(page2["transactions"]) == 2
+
+
+def test_page_size_can_be_raised_to_50(client):
+    res = client.get("/api/transactions", params={"page_size": 50})
+    assert res.status_code == 200
+    assert res.json()["page_size"] == 50
+
+
+def test_page_size_above_50_is_rejected(client):
+    res = client.get("/api/transactions", params={"page_size": 51})
+    assert res.status_code == 422
+
+
 def test_filter_by_type(client):
     client.post(
         "/api/transactions",
@@ -199,3 +229,163 @@ def test_get_categories(client):
     body = res.json()
     assert "Salary" in body["income"]
     assert "Groceries" in body["expense"]
+
+
+def test_health(client):
+    res = client.get("/api/health")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["status"] == "ok"
+    assert body["database"] in ("default", "e2e")
+
+
+def test_stats_balance_is_income_minus_expense(client):
+    client.post(
+        "/api/transactions",
+        json={"type": "income", "amount": 500, "category": "Salary"},
+    )
+    client.post(
+        "/api/transactions",
+        json={"type": "expense", "amount": 125, "category": "Groceries"},
+    )
+
+    res = client.get("/api/transactions")
+    stats = res.json()["stats"]
+    assert float(stats["total_income"]) == 500
+    assert float(stats["total_expense"]) == 125
+    assert float(stats["balance"]) == 375
+
+
+def test_filter_by_category(client):
+    client.post(
+        "/api/transactions",
+        json={"type": "expense", "amount": 10, "category": "Groceries"},
+    )
+    client.post(
+        "/api/transactions",
+        json={"type": "expense", "amount": 20, "category": "Transport"},
+    )
+
+    res = client.get("/api/transactions", params={"category": "Transport"})
+    body = res.json()
+    assert body["total"] == 1
+    assert body["transactions"][0]["category"] == "Transport"
+
+
+def test_filter_by_date_range(client):
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 5,
+            "category": "Groceries",
+            "date": "2026-01-15T00:00:00",
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 15,
+            "category": "Groceries",
+            "date": "2026-03-01T00:00:00",
+        },
+    )
+
+    res = client.get(
+        "/api/transactions",
+        params={"from": "2026-02-01T00:00:00", "to": "2026-03-31T23:59:59"},
+    )
+    assert res.json()["total"] == 1
+    assert float(res.json()["transactions"][0]["amount"]) == 15
+
+
+def test_export_respects_filters(client):
+    client.post(
+        "/api/transactions",
+        json={"type": "income", "amount": 50, "category": "Salary"},
+    )
+    client.post(
+        "/api/transactions",
+        json={"type": "expense", "amount": 10, "category": "Groceries"},
+    )
+
+    res = client.get("/api/transactions/export", params={"type": "income"})
+    assert res.status_code == 200
+    assert "Salary" in res.text
+    assert "Groceries" not in res.text
+
+
+def test_analytics_includes_monthly_breakdown(client):
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "income",
+            "amount": 1000,
+            "category": "Salary",
+            "date": "2026-01-10T00:00:00",
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 40,
+            "category": "Groceries",
+            "date": "2026-01-20T00:00:00",
+        },
+    )
+
+    res = client.get("/api/analytics")
+    body = res.json()
+    assert float(body["stats"]["balance"]) == 960
+    assert len(body["by_month"]) >= 1
+    assert body["by_month"][0]["income"] is not None
+    assert body["by_month"][0]["expense"] is not None
+
+
+def test_budget_upsert_updates_limit(client):
+    client.put("/api/budgets", json={"category": "Groceries", "amount": 100})
+    client.put("/api/budgets", json={"category": "Groceries", "amount": 250})
+
+    budgets = client.get("/api/budgets").json()
+    assert len(budgets) == 1
+    assert float(budgets[0]["amount"]) == 250
+
+
+def test_budget_delete_missing(client):
+    res = client.delete("/api/budgets/9999")
+    assert res.status_code == 404
+
+
+def test_list_recurring_and_delete(client):
+    create_res = client.post(
+        "/api/recurring",
+        json={
+            "type": "income",
+            "amount": 200,
+            "category": "Freelance",
+            "frequency": "weekly",
+            "next_date": "2026-04-01T00:00:00",
+        },
+    )
+    recurring_id = create_res.json()["id"]
+
+    list_res = client.get("/api/recurring")
+    assert list_res.status_code == 200
+    assert len(list_res.json()) == 1
+    assert list_res.json()[0]["frequency"] == "weekly"
+
+    delete_res = client.delete(f"/api/recurring/{recurring_id}")
+    assert delete_res.status_code == 204
+    assert client.get("/api/recurring").json() == []
+
+
+def test_recurring_post_not_found(client):
+    res = client.post("/api/recurring/9999/post")
+    assert res.status_code == 404
+
+
+def test_recurring_delete_not_found(client):
+    res = client.delete("/api/recurring/9999")
+    assert res.status_code == 404

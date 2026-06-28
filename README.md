@@ -201,10 +201,42 @@ Base path: `/api`
 
 Amounts use `Decimal` (12,2) in the database. Invalid input returns HTTP 422; missing IDs return 404.
 
-## Opening the database
+## Opening / viewing the database
 
-The SQLite file is at `backend/finance.db`. Start the backend once before opening it.
+Your data lives in **`backend/finance.db`** (a binary SQLite file). The throwaway
+`backend/e2e_finance.db` is only used by Playwright tests and is normally empty —
+that is expected, don't confuse it with your real data.
 
-- **Cursor / VS Code:** SQLite Viewer extension — click `backend/finance.db`
-- **DB Browser for SQLite:** [sqlitebrowser.org](https://sqlitebrowser.org/)
-- **API:** http://localhost:8000/docs or http://localhost:8000/api/transactions
+> **Important:** Do **not** open `finance.db` by double-clicking it into a normal
+> editor tab. A SQLite file is binary, so a text editor shows garbage and looks
+> "empty". Use one of the methods below instead.
+
+### Quickest: view your data from the terminal (always accurate)
+
+```powershell
+cd backend
+.venv\Scripts\activate
+python -c "import sqlite3; [print(r) for r in sqlite3.connect('finance.db').execute('select * from transactions')]"
+```
+
+This reads the real file directly and is never cached, so it's the reliable way
+to confirm what's stored.
+
+### GUI options
+
+- **Cursor / VS Code — SQLite Viewer extension:** install **SQLite Viewer**, then
+  open `backend/finance.db` *through the extension* (not as a text file). If it
+  looks empty, click the extension's **refresh** button — the viewer caches and
+  does not auto-update when the running backend writes new rows.
+- **DB Browser for SQLite:** [sqlitebrowser.org](https://sqlitebrowser.org/) →
+  *File ▸ Open Database* ▸ `backend/finance.db` ▸ **Browse Data** tab. Click
+  **Refresh** if you had it open while the app was writing.
+
+### Through the running app
+
+- **API:** http://localhost:8000/api/transactions
+- **Swagger docs:** http://localhost:8000/docs
+- **UI:** http://localhost:5173
+
+> If the UI shows your transactions but a viewer shows the file empty, trust the
+> UI/terminal — it's a viewer cache or a binary-opened-as-text issue, not data loss.
