@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_FORM, toFormState, validate } from './validation.js'
+import { EMPTY_FORM, toFormState, validate, validateGoal } from './validation.js'
 
 const categories = {
   income: ['Salary', 'Freelance'],
@@ -92,5 +92,32 @@ describe('validate', () => {
       categories,
     )
     expect(errors.category).toBe('Category is required.')
+  })
+})
+
+describe('validateGoal', () => {
+  it('accepts a valid goal', () => {
+    expect(validateGoal({ name: 'Car', target: '5000' })).toEqual({})
+  })
+
+  it('requires a name', () => {
+    const errors = validateGoal({ name: '  ', target: '100' })
+    expect(errors.name).toBe('Name is required.')
+  })
+
+  it('requires a target amount', () => {
+    const errors = validateGoal({ name: 'Car', target: '' })
+    expect(errors.target).toBe('Enter a target amount.')
+  })
+
+  it('rejects a non-positive target', () => {
+    const errors = validateGoal({ name: 'Car', target: '0' })
+    expect(errors.target).toBe('Target must be greater than 0.')
+  })
+
+  it('reports multiple missing fields at once', () => {
+    const errors = validateGoal({ name: '', target: '' })
+    expect(errors.name).toBeTruthy()
+    expect(errors.target).toBeTruthy()
   })
 })

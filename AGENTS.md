@@ -40,6 +40,15 @@ Base path `/api`. Key endpoints:
 - Refresh UI state after every create/update/delete
 - Do not add authentication or multi-user features; this is intentionally single-user and local
 
+### Validation must surface a message in the UI
+
+Every backend validation rule must have a matching, visible message in the frontend — the user should never click a button and have "nothing happen."
+
+- For each required field or constraint enforced in Pydantic (`gt=0`, allowed category, required string, etc.), the corresponding form must show a **relevant, field-level message** before submitting (mirror the pattern in `validation.js` + `TransactionForm.jsx`/`GoalPanel.jsx`: a pure validator returning `{ field: message }`, rendered as `.field-error` with `aria-invalid`).
+- Put reusable, pure validators in `frontend/src/validation.js` and unit-test them in `validation.test.js`.
+- Also handle server-side rejections: surface the API error message (HTTP 422/404) near the relevant form/panel via a toast or inline error — do not swallow it. The API returns `{ "error": { "code", "message", "details" } }`; `api.js` turns that into a readable message.
+- When you add or change a backend constraint, update the matching frontend validation + message (and tests) in the same task.
+
 ## Run commands
 
 Backend (from `backend/`):
@@ -131,6 +140,26 @@ When changes affect startup, ports, proxy, or migrations, also verify:
 
 - `http://localhost:8000/api/health` responds
 - `http://localhost:5173` returns HTTP 200 (start dev servers if needed, or state that you did not verify live)
+
+### Restart servers so the running app reflects your changes
+
+A long-running dev server can serve **stale code/schema**, which looks like a broken feature even when the code is correct (e.g. a new endpoint 404s, or a new table is missing because a migration never ran). After making changes, restart the relevant server so the user sees them live:
+
+- **Backend (port 8000)** — restart after backend code, new endpoints, new dependencies, or **new Alembic migrations** (migrations only run on startup). Even with `uvicorn --reload`, a fresh start is the reliable way to apply migrations and load new routes.
+- **Frontend (port 5173)** — Vite HMR covers most source edits, but restart after changes to `vite.config.js`, the `/api` proxy, env vars, or dependencies. Tell the user to refresh the browser after a backend restart.
+- **How to restart (PowerShell):** stop the process by port, then relaunch.
+
+```powershell
+# Stop, then start the backend
+Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+cd backend; .venv\Scripts\activate; uvicorn main:app --reload
+
+# Stop, then start the frontend
+Get-NetTCPConnection -LocalPort 5173 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }
+cd frontend; npm run dev
+```
+
+Never restart onto the E2E ports (**8001/5174**) or point the dev backend at `e2e_finance.db`.
 
 ### If something cannot be tested
 

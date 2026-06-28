@@ -48,15 +48,24 @@ flowchart LR
 
 - `id`, `type`, `amount`, `category`, `description`, `frequency` ("weekly" | "monthly"), `next_date`
 
+### Goal
+
+- `id`, `name`, `target_amount`, `current_amount` (default 0), `target_date` (optional) — a savings target funded via contributions
+
 ## API endpoints
 
+- `GET /api/health` — health check, reports whether the isolated E2E database is active
 - `GET /api/categories` — income/expense category lists
 - `GET /api/transactions` — paginated list + filtered stats; query: `type`, `category`, `from`, `to`, `search`, `page`, `page_size`
 - `GET /api/transactions/export` — CSV download with same filters
 - `GET /api/analytics` — stats, expense-by-category, monthly income/expense
+- `GET /api/dashboard` — current-month KPIs + month-over-month expense comparison
 - `POST/PUT/DELETE /api/transactions` — CRUD
 - `GET/PUT/DELETE /api/budgets` — budget management
 - `GET/POST/DELETE /api/recurring`, `POST /api/recurring/{id}/post` — recurring templates
+- `GET/POST/PUT/DELETE /api/goals`, `POST /api/goals/{id}/contribute` — savings goals
+
+Errors use a structured shape: `{ "error": { "code", "message", "details" } }`. OpenAPI operations are grouped with tags (transactions, analytics, budgets, recurring, goals, meta).
 
 ## Validation
 
@@ -67,13 +76,15 @@ flowchart LR
 
 ## Frontend features
 
+- Dashboard KPI cards (net, savings rate, spend vs. last month, top category, budget health)
 - Balance summary (income, expense, net)
 - Analytics charts (monthly bar, category pie)
 - Transaction form with category dropdown
-- Filters, search, pagination, CSV export
+- Filters, search, date-range presets, pagination, CSV export
 - Budget progress bars
-- Recurring templates with manual "Post now"
-- Toast notifications, delete confirmations, dark mode
+- Recurring templates (auto-posted when due, plus manual "Post now")
+- Savings goals with contributions and progress bars
+- Skeleton loaders, toast notifications, delete confirmations, dark mode
 
 ## Run instructions
 
@@ -82,5 +93,6 @@ See [README.md](../README.md).
 ## Notes
 
 - Single-user, local-only — no authentication by design
-- Recurring entries are posted manually (no cron/scheduler)
+- Recurring entries auto-post on creation (if already due), on startup, and via an in-process poller (`RECURRING_POLL_SECONDS`, default 3600); manual "Post now" posts a template early
+- The auto-post poller is disabled against the isolated E2E database for deterministic tests
 - Delete old `finance.db` when upgrading from pre-Alembic versions

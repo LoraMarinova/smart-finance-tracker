@@ -29,7 +29,12 @@ const PIE_COLORS = [
 
 function ChartsPanel({ analytics, loading }) {
   if (loading) {
-    return <p className="loading">Loading charts…</p>
+    return (
+      <div className="charts-grid" aria-busy="true" aria-label="Loading charts">
+        <div className="chart-card skeleton" style={{ height: 260 }} />
+        <div className="chart-card skeleton" style={{ height: 260 }} />
+      </div>
+    )
   }
 
   if (!analytics) return null

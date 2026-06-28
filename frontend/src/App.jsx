@@ -1,8 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
+  contributeToGoal,
+  createGoal,
   createRecurring,
   createTransaction,
   deleteBudget,
+  deleteGoal,
   deleteRecurring,
   deleteTransaction,
   downloadCsv,
@@ -10,6 +13,8 @@ import {
   getAnalytics,
   getBudgets,
   getCategories,
+  getDashboard,
+  getGoals,
   getRecurring,
   getTransactions,
   postRecurring,
@@ -20,8 +25,11 @@ import BalanceSummary from './components/BalanceSummary.jsx'
 import BudgetPanel from './components/BudgetPanel.jsx'
 import ChartsPanel from './components/ChartsPanel.jsx'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
+import DashboardCards from './components/DashboardCards.jsx'
 import FilterBar from './components/FilterBar.jsx'
+import GoalPanel from './components/GoalPanel.jsx'
 import RecurringPanel from './components/RecurringPanel.jsx'
+import { TableSkeleton } from './components/Skeleton.jsx'
 import ThemeToggle from './components/ThemeToggle.jsx'
 import { ToastProvider, useToast } from './components/Toast.jsx'
 import TransactionForm from './components/TransactionForm.jsx'
@@ -83,11 +91,14 @@ function AppContent() {
   const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE)
   const [filters, setFilters] = useState(EMPTY_FILTERS)
   const [analytics, setAnalytics] = useState(null)
+  const [dashboard, setDashboard] = useState(null)
   const [budgets, setBudgets] = useState([])
   const [recurring, setRecurring] = useState([])
+  const [goals, setGoals] = useState([])
 
   const [loading, setLoading] = useState(true)
   const [chartsLoading, setChartsLoading] = useState(true)
+  const [dashboardLoading, setDashboardLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
 
   const [editing, setEditing] = useState(null)
@@ -98,6 +109,8 @@ function AppContent() {
   const [exporting, setExporting] = useState(false)
   const [budgetBusy, setBudgetBusy] = useState(false)
   const [recurringBusyId, setRecurringBusyId] = useState(null)
+  const [goalBusy, setGoalBusy] = useState(false)
+  const [goalBusyId, setGoalBusyId] = useState(null)
 
   const [confirm, setConfirm] = useState(null)
 
@@ -132,6 +145,16 @@ function AppContent() {
     setRecurring(data ?? [])
   }, [])
 
+  const refreshDashboard = useCallback(async () => {
+    const data = await getDashboard()
+    setDashboard(data)
+  }, [])
+
+  const refreshGoals = useCallback(async () => {
+    const data = await getGoals()
+    setGoals(data ?? [])
+  }, [])
+
   const refreshAll = useCallback(
     async (page = 1) => {
       await Promise.all([
@@ -139,9 +162,16 @@ function AppContent() {
         refreshAnalytics(),
         refreshBudgets(),
         refreshRecurring(),
+        refreshDashboard(),
       ])
     },
-    [refreshTransactions, refreshAnalytics, refreshBudgets, refreshRecurring],
+    [
+      refreshTransactions,
+      refreshAnalytics,
+      refreshBudgets,
+      refreshRecurring,
+      refreshDashboard,
+    ],
   )
 
   useEffect(() => {
@@ -158,6 +188,19 @@ function AppContent() {
         if (active) setRecurring(data ?? [])
       })
       .catch(() => {})
+    getGoals()
+      .then((data) => {
+        if (active) setGoals(data ?? [])
+      })
+      .catch(() => {})
+    getDashboard()
+      .then((data) => {
+        if (active) setDashboard(data)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (active) setDashboardLoading(false)
+      })
     return () => {
       active = false
     }
@@ -341,12 +384,14 @@ function AppContent() {
           next_date: `${payload.next_date}T00:00:00`,
         })
         showToast('Recurring template added.')
-        await refreshRecurring()
+        // A due template is auto-posted on create, so refresh everything (list,
+        // dashboard, analytics) — not just the recurring panel.
+        await refreshAll(pagination.page)
       } catch (err) {
         setLoadError(err.message)
       }
     },
-    [refreshRecurring, showToast],
+    [pagination.page, refreshAll, showToast],
   )
 
   const handlePostRecurring = useCallback(
@@ -390,6 +435,62 @@ function AppContent() {
     [refreshRecurring, showToast],
   )
 
+  const handleCreateGoal = useCallback(
+    async (payload) => {
+      setGoalBusy(true)
+      try {
+        await createGoal(payload)
+        showToast('Goal added.')
+        await refreshGoals()
+      } catch (err) {
+        setLoadError(err.message)
+      } finally {
+        setGoalBusy(false)
+      }
+    },
+    [refreshGoals, showToast],
+  )
+
+  const handleContributeGoal = useCallback(
+    async (id, amount) => {
+      setGoalBusyId(id)
+      try {
+        await contributeToGoal(id, amount)
+        showToast('Contribution added.')
+        await refreshGoals()
+      } catch (err) {
+        setLoadError(err.message)
+      } finally {
+        setGoalBusyId(null)
+      }
+    },
+    [refreshGoals, showToast],
+  )
+
+  const handleDeleteGoal = useCallback(
+    (id) => {
+      setConfirm({
+        title: 'Delete goal?',
+        message: 'This savings goal and its progress will be removed.',
+        confirmLabel: 'Delete',
+        onConfirm: async () => {
+          setConfirm(null)
+          setGoalBusyId(id)
+          try {
+            await deleteGoal(id)
+            showToast('Goal deleted.', 'info')
+            await refreshGoals()
+          } catch (err) {
+            setLoadError(err.message)
+          } finally {
+            setGoalBusyId(null)
+          }
+        },
+      })
+    },
+    [refreshGoals, showToast],
+  )
+
   return (
     <div className="app">
       <header className="app-header">
@@ -403,6 +504,8 @@ function AppContent() {
           <ThemeToggle />
         </div>
       </header>
+
+      <DashboardCards data={dashboard} loading={dashboardLoading} />
 
       <BalanceSummary
         totalIncome={stats.total_income}
@@ -437,7 +540,7 @@ function AppContent() {
         <h2 className="section-title">Transactions</h2>
         {loadError ? <p className="form-error" role="alert">{loadError}</p> : null}
         {loading ? (
-          <p className="loading">Loading…</p>
+          <TableSkeleton rows={pageSize > 10 ? 10 : pageSize} />
         ) : (
           <TransactionList
             transactions={transactions}
@@ -470,6 +573,14 @@ function AppContent() {
           onDelete={handleDeleteRecurring}
           onPost={handlePostRecurring}
           busyId={recurringBusyId}
+        />
+        <GoalPanel
+          goals={goals}
+          onCreate={handleCreateGoal}
+          onContribute={handleContributeGoal}
+          onDelete={handleDeleteGoal}
+          busy={goalBusy}
+          busyId={goalBusyId}
         />
       </div>
 

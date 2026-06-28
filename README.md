@@ -5,16 +5,19 @@ A local-only personal finance tracker for logging income and expenses with real-
 ## Features
 
 - Full CRUD for transactions with server-side validation
-- **Filters & search** — type, category, date range, text search
-- **Pagination** for large transaction lists
+- **Dashboard** — current-month KPIs: net, savings rate, spend vs. last month, top category, budget health
+- **Filters & search** — type, category, date range (with quick presets), text search
+- **Pagination** for large transaction lists (10/25/50 per page)
 - **Analytics** — monthly income vs expense bar chart, category pie chart
 - **Predefined categories** — validated dropdowns for income and expense
 - **Budgets** — monthly spending limits per category with progress bars
-- **Recurring templates** — post scheduled entries on demand (no background scheduler)
+- **Recurring templates** — auto-posted when due (with manual "Post now" too)
+- **Savings goals** — set targets and track contributions with progress bars
 - **CSV export** — download filtered transactions
 - **Dark mode** — persisted in browser storage
-- Toast notifications and delete confirmation dialogs
-- Alembic migrations, pytest + Vitest tests, Docker Compose, GitHub Actions CI
+- Skeleton loaders, toast notifications, and delete confirmation dialogs
+- Structured JSON error responses and tagged OpenAPI docs
+- Alembic migrations, pytest + Vitest + Playwright tests, Docker Compose, GitHub Actions CI
 
 ## Tech stack
 
@@ -145,7 +148,7 @@ cd frontend
 npm install
 ```
 
-`npm test` runs the **Vitest** unit tests (currently the form-validation logic). Then optionally a production build:
+`npm test` runs the **Vitest** unit tests (form-validation logic and date-range presets). Then optionally a production build:
 
 ```powershell
 npm test
@@ -184,10 +187,12 @@ Base path: `/api`
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
+| GET | `/health` | Health check; reports whether the isolated E2E database is in use |
 | GET | `/categories` | Predefined income/expense category lists |
 | GET | `/transactions` | Paginated list + filtered stats (`type`, `category`, `from`, `to`, `search`, `page`, `page_size`) |
 | GET | `/transactions/export` | CSV export with same filters |
 | GET | `/analytics` | Stats, category breakdown, monthly breakdown |
+| GET | `/dashboard` | Current-month KPIs and month-over-month expense comparison |
 | POST | `/transactions` | Create transaction |
 | PUT | `/transactions/{id}` | Update transaction |
 | DELETE | `/transactions/{id}` | Delete transaction |
@@ -198,8 +203,28 @@ Base path: `/api`
 | POST | `/recurring` | Create recurring template |
 | POST | `/recurring/{id}/post` | Post one occurrence and advance next date |
 | DELETE | `/recurring/{id}` | Delete recurring template |
+| GET | `/goals` | List savings goals with progress |
+| POST | `/goals` | Create a savings goal |
+| PUT | `/goals/{id}` | Update a savings goal |
+| POST | `/goals/{id}/contribute` | Add a contribution to a goal |
+| DELETE | `/goals/{id}` | Delete a savings goal |
 
-Amounts use `Decimal` (12,2) in the database. Invalid input returns HTTP 422; missing IDs return 404.
+Amounts use `Decimal` (12,2) in the database. Invalid input returns HTTP 422; missing IDs return 404. Errors use a structured shape: `{ "error": { "code", "message", "details" } }`.
+
+### Recurring auto-posting
+
+Recurring templates are posted automatically:
+
+- **On creation** — if a new template's next date is already due, it is posted immediately (so you don't wait for the poller).
+- **On startup** — any occurrences that fell due while the app was offline are caught up.
+- **While running** — a background poller posts due occurrences every `RECURRING_POLL_SECONDS` (default `3600`).
+
+You can still use the **"Post now"** button to post a template early (before it is due). The poller is disabled for the isolated E2E database to keep tests deterministic.
+
+| Env var | Default | Purpose |
+| ------- | ------- | ------- |
+| `FINANCE_DB_PATH` | `backend/finance.db` | Override the SQLite file location (used by E2E) |
+| `RECURRING_POLL_SECONDS` | `3600` | How often the background poller posts due recurring entries |
 
 ## Opening / viewing the database
 

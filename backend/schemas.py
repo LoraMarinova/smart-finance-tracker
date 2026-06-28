@@ -86,6 +86,26 @@ class AnalyticsResponse(BaseModel):
     by_month: list[MonthlyBreakdown]
 
 
+class MonthComparison(BaseModel):
+    current: Decimal
+    previous: Decimal
+    change_pct: float | None = None
+
+
+class DashboardResponse(BaseModel):
+    month: str
+    income: Decimal
+    expense: Decimal
+    balance: Decimal
+    savings_rate: float
+    expense_comparison: MonthComparison
+    top_category: str | None = None
+    top_category_amount: Decimal
+    budgets_total: int
+    budgets_over: int
+    transaction_count: int
+
+
 class BudgetBase(BaseModel):
     category: NonEmptyStr
     amount: Decimal = Field(gt=0, decimal_places=2)
@@ -147,6 +167,36 @@ class RecurringRead(BaseModel):
     description: str | None = None
     frequency: RecurringFrequency
     next_date: datetime
+
+
+class GoalBase(BaseModel):
+    name: NonEmptyStr
+    target_amount: Decimal = Field(gt=0, decimal_places=2)
+    target_date: datetime | None = None
+
+
+class GoalCreate(GoalBase):
+    current_amount: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+
+
+class GoalUpdate(GoalBase):
+    current_amount: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+
+
+class GoalContribute(BaseModel):
+    amount: Decimal = Field(gt=0, decimal_places=2)
+
+
+class GoalRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    target_amount: Decimal
+    current_amount: Decimal
+    target_date: datetime | None = None
+    remaining: Decimal
+    progress_pct: float
 
 
 class CategoriesResponse(BaseModel):

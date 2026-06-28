@@ -17,6 +17,14 @@ When adding or changing behavior, add tests in the proper suite and verify they 
 
 Match existing naming and style. Cover happy path and important edge cases. Do not mark work done until your new tests pass.
 
+## Every backend validation needs a frontend message
+
+A user must never trigger an action and see "nothing happen." For every backend validation rule (Pydantic `gt=0`, allowed category, required field, etc.):
+
+- Add matching **client-side validation** that shows a relevant, field-level message before submit (pure validator in `frontend/src/validation.js`, rendered as `.field-error` with `aria-invalid`, like `TransactionForm.jsx`/`GoalPanel.jsx`). Unit-test the validator in `validation.test.js`.
+- Surface **server rejections** too: show the API error (HTTP 422/404) near the form/panel via inline error or toast — never swallow it. Errors come back as `{ "error": { "code", "message", "details" } }`.
+- Add an E2E check that the message appears for at least the empty/invalid case.
+
 ## Required verification by change type
 
 **Backend** (`backend/`):
@@ -49,6 +57,14 @@ If the change affects how the user runs or uses the app (servers, ports, proxy, 
 - Confirm `http://localhost:5173` loads (HTTP 200), or say explicitly if you did not start the dev servers and why.
 
 E2E tests use isolated ports **8001/5174** and `e2e_finance.db` — never the user's real `finance.db` on port 8000.
+
+## Restart servers to apply changes
+
+A long-running dev server serves **stale code/schema**, so a correct change can look broken (new endpoint 404s, new table missing because the migration never ran). Restart the relevant server whenever the running app must reflect your work:
+
+- **Backend (8000):** restart after backend code, new endpoints, new dependencies, or **new Alembic migrations** (migrations run only on startup). A fresh start is the reliable way to apply them, even with `--reload`.
+- **Frontend (5173):** Vite HMR covers most edits; restart after `vite.config.js`, proxy, env, or dependency changes. Tell the user to refresh the browser after a backend restart.
+- Restart by stopping the process on its port, then relaunching. Never restart onto E2E ports **8001/5174** or point the dev backend at `e2e_finance.db`.
 
 ## Reporting
 

@@ -89,8 +89,9 @@ test('pagination moves to the next page when there are many transactions', async
   }
 
   await page.goto('/')
+  const list = page.locator('.list-section')
   await expect(page.getByText('Page 1 of 2')).toBeVisible()
-  await expect(page.getByText('11 transactions')).toBeVisible()
+  await expect(list.getByText('11 transactions')).toBeVisible()
 
   await page.getByRole('button', { name: 'Next' }).click()
   await expect(page.getByText('Page 2 of 2')).toBeVisible()
@@ -125,6 +126,115 @@ test('setting a budget shows progress for that category', async ({ page, request
   await expect(budgets).toContainText('200')
 })
 
+test('dashboard cards summarise the current month', async ({ page, request }) => {
+  const now = new Date()
+  const iso = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-15T00:00:00`
+  await createTransaction(request, {
+    type: 'income',
+    amount: 1000,
+    category: 'Salary',
+    date: iso,
+  })
+  await createTransaction(request, {
+    type: 'expense',
+    amount: 200,
+    category: 'Groceries',
+    date: iso,
+  })
+
+  await page.goto('/')
+  const dashboard = page.getByLabel('Dashboard')
+  await expect(dashboard.getByText('This month net')).toBeVisible()
+  await expect(dashboard.getByText('Spent this month')).toBeVisible()
+  await expect(dashboard.getByText('Top category')).toBeVisible()
+  await expect(dashboard).toContainText('Groceries')
+})
+
+test('date range preset narrows the list to this month', async ({ page, request }) => {
+  const now = new Date()
+  const thisMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-10T00:00:00`
+  await createTransaction(request, {
+    type: 'expense',
+    amount: 25,
+    category: 'Groceries',
+    description: 'Recent buy',
+    date: thisMonth,
+  })
+  await createTransaction(request, {
+    type: 'expense',
+    amount: 99,
+    category: 'Rent',
+    description: 'Old rent',
+    date: '2020-01-15T00:00:00',
+  })
+
+  await page.goto('/')
+  const list = page.locator('.list-section')
+  await expect(list.getByText('Recent buy')).toBeVisible()
+  await expect(list.getByText('Old rent')).toBeVisible()
+
+  await page
+    .getByRole('group', { name: 'Date range presets' })
+    .getByRole('button', { name: 'This month' })
+    .click()
+
+  await expect(list.getByText('Recent buy')).toBeVisible()
+  await expect(list.getByText('Old rent')).toHaveCount(0)
+})
+
+test('savings goal can be created and contributed to', async ({ page }) => {
+  await page.goto('/')
+
+  const goals = page.getByLabel('Savings goals')
+  const form = goals.locator('form.goal-form')
+  await form.locator('input[type="text"]').fill('Vacation')
+  await form.locator('input[type="number"]').fill('1000')
+  await form.getByRole('button', { name: 'Add goal' }).click()
+
+  await expect(page.getByText('Goal added.')).toBeVisible()
+  await expect(goals.locator('.goal-list strong')).toHaveText('Vacation')
+
+  const item = goals.locator('.goal-item')
+  await item.locator('.goal-contribute-input').fill('250')
+  await item.getByRole('button', { name: 'Contribute' }).click()
+
+  await expect(page.getByText('Contribution added.')).toBeVisible()
+  await expect(item).toContainText('250')
+})
+
+test('goal form shows validation errors for missing fields', async ({ page }) => {
+  await page.goto('/')
+
+  const goals = page.getByLabel('Savings goals')
+  // Submit with both fields empty.
+  await goals.getByRole('button', { name: 'Add goal' }).click()
+
+  await expect(goals.getByText('Name is required.')).toBeVisible()
+  await expect(goals.getByText('Enter a target amount.')).toBeVisible()
+  await expect(goals.getByText('No savings goals yet.')).toBeVisible()
+})
+
+test('a due recurring template auto-posts on creation', async ({ page }) => {
+  await page.goto('/')
+
+  const recurring = page.getByLabel('Recurring transactions')
+  const form = recurring.locator('form.recurring-form')
+  await form.locator('select[name="type"]').selectOption('expense')
+  await form.locator('input[name="amount"]').fill('15')
+  await form.locator('select[name="category"]').selectOption('Subscriptions')
+  // Recent past date (5 days ago): posts exactly once on create, immediately,
+  // without clicking "Post now".
+  const due = new Date()
+  due.setDate(due.getDate() - 5)
+  const dueIso = `${due.getFullYear()}-${String(due.getMonth() + 1).padStart(2, '0')}-${String(due.getDate()).padStart(2, '0')}`
+  await form.locator('input[name="next_date"]').fill(dueIso)
+  await form.getByRole('button', { name: 'Add recurring' }).click()
+
+  await expect(page.getByText('Recurring template added.')).toBeVisible()
+  const list = page.locator('.list-section')
+  await expect(list.getByText('Subscriptions')).toBeVisible()
+})
+
 test('recurring template can be posted into the transaction list', async ({ page }) => {
   await page.goto('/')
 
@@ -133,7 +243,8 @@ test('recurring template can be posted into the transaction list', async ({ page
   await form.locator('select[name="type"]').selectOption('expense')
   await form.locator('input[name="amount"]').fill('99')
   await form.locator('select[name="category"]').selectOption('Rent')
-  await form.locator('input[name="next_date"]').fill('2026-06-01')
+  // Future date so it is not auto-posted on create; this tests manual "Post now".
+  await form.locator('input[name="next_date"]').fill('2099-06-01')
   await form.getByRole('button', { name: 'Add recurring' }).click()
 
   await expect(page.getByText('Recurring template added.')).toBeVisible()

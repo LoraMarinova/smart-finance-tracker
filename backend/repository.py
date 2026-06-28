@@ -1,15 +1,15 @@
 import csv
 import io
 import math
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from sqlalchemy import Select, case, func, or_, select
 from sqlalchemy.orm import Session
 
 from constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
-from models import Budget, RecurringTransaction, Transaction
-from schemas import Stats
+from models import Budget, Goal, RecurringTransaction, Transaction
+from schemas import DashboardResponse, MonthComparison, Stats
 
 
 def _apply_transaction_filters(
@@ -244,3 +244,177 @@ def list_recurring(db: Session) -> list[RecurringTransaction]:
             select(RecurringTransaction).order_by(RecurringTransaction.next_date)
         ).all()
     )
+
+
+def advance_next_date(current: datetime, frequency: str) -> datetime:
+    if frequency == "weekly":
+        return current + timedelta(weeks=1)
+    return current + timedelta(days=30)
+
+
+def _catch_up_template(
+    db: Session,
+    template: RecurringTransaction,
+    now: datetime,
+    max_catch_up: int = 120,
+) -> int:
+    """Post every due occurrence for a single template, advancing its next_date.
+
+    Capped by ``max_catch_up`` to avoid runaway inserts. Does not commit.
+    """
+    posted = 0
+    while template.next_date <= now and posted < max_catch_up:
+        db.add(
+            Transaction(
+                type=template.type,
+                amount=template.amount,
+                category=template.category,
+                description=template.description,
+                date=template.next_date,
+            )
+        )
+        template.next_date = advance_next_date(template.next_date, template.frequency)
+        posted += 1
+    return posted
+
+
+def post_due_recurring(
+    db: Session, now: datetime | None = None, max_catch_up: int = 120
+) -> int:
+    """Post a transaction for every recurring occurrence that is now due.
+
+    Catches up missed occurrences (e.g. after the app was offline) across all
+    templates.
+    """
+    now = now or datetime.now()
+    posted = sum(
+        _catch_up_template(db, template, now, max_catch_up)
+        for template in db.scalars(select(RecurringTransaction)).all()
+    )
+    if posted:
+        db.commit()
+    return posted
+
+
+def post_due_for_template(
+    db: Session,
+    template_id: int,
+    now: datetime | None = None,
+    max_catch_up: int = 120,
+) -> int:
+    """Post due occurrences for one template (used right after it is created)."""
+    template = db.get(RecurringTransaction, template_id)
+    if template is None:
+        return 0
+    posted = _catch_up_template(db, template, now or datetime.now(), max_catch_up)
+    if posted:
+        db.commit()
+    return posted
+
+
+def _month_bounds(moment: datetime) -> tuple[datetime, datetime]:
+    start = datetime(moment.year, moment.month, 1)
+    if moment.month == 12:
+        nxt = datetime(moment.year + 1, 1, 1)
+    else:
+        nxt = datetime(moment.year, moment.month + 1, 1)
+    return start, nxt
+
+
+def dashboard_summary(
+    db: Session, now: datetime | None = None
+) -> DashboardResponse:
+    now = now or datetime.now()
+    cur_start, cur_end = _month_bounds(now)
+    prev_start, prev_end = _month_bounds(cur_start - timedelta(days=1))
+    last_micro = timedelta(microseconds=1)
+
+    cur_filter = _apply_transaction_filters(
+        select(Transaction), date_from=cur_start, date_to=cur_end - last_micro
+    )
+    cur_stats = compute_stats(db, cur_filter)
+
+    prev_filter = _apply_transaction_filters(
+        select(Transaction), date_from=prev_start, date_to=prev_end - last_micro
+    )
+    prev_expense = compute_stats(db, prev_filter).total_expense
+
+    change_pct: float | None = None
+    if prev_expense > 0:
+        change_pct = float(
+            (cur_stats.total_expense - prev_expense) / prev_expense * 100
+        )
+
+    savings_rate = 0.0
+    if cur_stats.total_income > 0:
+        savings_rate = float(cur_stats.balance / cur_stats.total_income * 100)
+
+    categories = category_breakdown(
+        db, tx_type="expense", date_from=cur_start, date_to=cur_end - last_micro
+    )
+    top_category = categories[0][0] if categories else None
+    top_category_amount = categories[0][1] if categories else Decimal("0")
+
+    budgets = list_budgets(db)
+    spent = expense_totals_by_category(
+        db, date_from=cur_start, date_to=cur_end - last_micro
+    )
+    budgets_over = sum(
+        1 for b in budgets if spent.get(b.category, Decimal("0")) > b.amount
+    )
+
+    tx_count = db.scalar(
+        select(func.count()).select_from(cur_filter.subquery())
+    ) or 0
+
+    return DashboardResponse(
+        month=now.strftime("%Y-%m"),
+        income=cur_stats.total_income,
+        expense=cur_stats.total_expense,
+        balance=cur_stats.balance,
+        savings_rate=savings_rate,
+        expense_comparison=MonthComparison(
+            current=cur_stats.total_expense,
+            previous=prev_expense,
+            change_pct=change_pct,
+        ),
+        top_category=top_category,
+        top_category_amount=top_category_amount,
+        budgets_total=len(budgets),
+        budgets_over=budgets_over,
+        transaction_count=tx_count,
+    )
+
+
+def list_goals(db: Session) -> list[Goal]:
+    return list(db.scalars(select(Goal).order_by(Goal.id)).all())
+
+
+def update_goal(db: Session, goal_id: int, **fields: object) -> Goal | None:
+    goal = db.get(Goal, goal_id)
+    if goal is None:
+        return None
+    for key, value in fields.items():
+        setattr(goal, key, value)
+    db.commit()
+    db.refresh(goal)
+    return goal
+
+
+def delete_goal(db: Session, goal_id: int) -> bool:
+    goal = db.get(Goal, goal_id)
+    if goal is None:
+        return False
+    db.delete(goal)
+    db.commit()
+    return True
+
+
+def contribute_to_goal(db: Session, goal_id: int, amount: Decimal) -> Goal | None:
+    goal = db.get(Goal, goal_id)
+    if goal is None:
+        return None
+    goal.current_amount = goal.current_amount + amount
+    db.commit()
+    db.refresh(goal)
+    return goal

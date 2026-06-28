@@ -21,10 +21,16 @@ async function assertE2eDatabase(request) {
 export async function clearAll(request) {
   await assertE2eDatabase(request)
 
-  const txRes = await request.get('/api/transactions?page=1&page_size=50')
-  const txBody = await txRes.json()
-  for (const tx of txBody.transactions ?? []) {
-    await request.delete(`/api/transactions/${tx.id}`)
+  // Loop until empty: a single page may not cover catch-up postings from
+  // auto-posted recurring templates.
+  for (;;) {
+    const txRes = await request.get('/api/transactions?page=1&page_size=50')
+    const txBody = await txRes.json()
+    const rows = txBody.transactions ?? []
+    if (rows.length === 0) break
+    for (const tx of rows) {
+      await request.delete(`/api/transactions/${tx.id}`)
+    }
   }
 
   const budgets = await (await request.get('/api/budgets')).json()
@@ -35,6 +41,11 @@ export async function clearAll(request) {
   const recurring = await (await request.get('/api/recurring')).json()
   for (const item of recurring ?? []) {
     await request.delete(`/api/recurring/${item.id}`)
+  }
+
+  const goals = await (await request.get('/api/goals')).json()
+  for (const goal of goals ?? []) {
+    await request.delete(`/api/goals/${goal.id}`)
   }
 }
 

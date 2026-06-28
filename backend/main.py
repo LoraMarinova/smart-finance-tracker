@@ -1,12 +1,18 @@
+import asyncio
+import logging
+import os
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
-from datetime import datetime, timedelta
+from contextlib import asynccontextmanager, suppress
+from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
 from fastapi import APIRouter, FastAPI, HTTPException, Path, Query, status
+from fastapi.encoders import jsonable_encoder
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from constants import (
     ALL_CATEGORIES,
@@ -15,21 +21,29 @@ from constants import (
     INCOME_CATEGORIES,
     MAX_PAGE_SIZE,
 )
-from database import DBDep, is_e2e_database, run_migrations
-from models import RecurringTransaction, Transaction
+from database import DBDep, SessionLocal, is_e2e_database, run_migrations
+from models import Goal, RecurringTransaction, Transaction
 from models import Transaction as TxModel
 from repository import (
     _apply_transaction_filters,
+    advance_next_date,
     category_breakdown,
     compute_stats,
+    contribute_to_goal,
+    dashboard_summary,
     delete_budget,
+    delete_goal,
     expense_totals_by_category,
     export_transactions_csv,
     list_budgets,
+    list_goals,
     list_recurring,
     list_transactions,
     monthly_breakdown,
+    post_due_for_template,
+    post_due_recurring,
     total_pages,
+    update_goal,
     upsert_budget,
 )
 from schemas import (
@@ -39,6 +53,11 @@ from schemas import (
     BudgetWithSpending,
     CategoriesResponse,
     CategoryBreakdown,
+    DashboardResponse,
+    GoalContribute,
+    GoalCreate,
+    GoalRead,
+    GoalUpdate,
     MonthlyBreakdown,
     RecurringCreate,
     RecurringRead,
@@ -48,28 +67,125 @@ from schemas import (
     TransactionUpdate,
 )
 
+logger = logging.getLogger("finance")
+
 TransactionIdPath = Annotated[int, Path(ge=1, description="The transaction ID")]
 BudgetIdPath = Annotated[int, Path(ge=1, description="The budget ID")]
 RecurringIdPath = Annotated[int, Path(ge=1, description="The recurring transaction ID")]
+GoalIdPath = Annotated[int, Path(ge=1, description="The savings goal ID")]
+
+API_DESCRIPTION = """
+Local-only personal finance REST API.
+
+Track income and expenses with filters, search, and pagination; view analytics
+and a dashboard of KPIs; manage category budgets, recurring templates (posted
+automatically when due), and savings goals; and export filtered data to CSV.
+"""
+
+TAGS_METADATA = [
+    {"name": "meta", "description": "Health checks and reference data."},
+    {
+        "name": "transactions",
+        "description": "Create, list, filter, and export transactions.",
+    },
+    {
+        "name": "analytics",
+        "description": "Aggregated stats, dashboard, and breakdowns.",
+    },
+    {"name": "budgets", "description": "Per-category spending limits."},
+    {"name": "recurring", "description": "Recurring templates, auto-posted when due."},
+    {"name": "goals", "description": "Savings goals and contributions."},
+]
 
 
 def _default_date() -> datetime:
     return datetime.now()
 
 
-def _advance_next_date(current: datetime, frequency: str) -> datetime:
-    if frequency == "weekly":
-        return current + timedelta(weeks=1)
-    return current + timedelta(days=30)
+async def _recurring_poller() -> None:
+    """Periodically post due recurring transactions while the app runs."""
+    interval = int(os.environ.get("RECURRING_POLL_SECONDS", "3600"))
+    while True:
+        await asyncio.sleep(interval)
+        try:
+            with SessionLocal() as db:
+                count = post_due_recurring(db)
+            if count:
+                logger.info("Auto-posted %d due recurring transaction(s)", count)
+        except Exception:  # pragma: no cover - defensive background guard
+            logger.exception("Recurring poller failed")
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     run_migrations()
+
+    poller: asyncio.Task[None] | None = None
+    if os.environ.get("FINANCE_TESTING") != "1":
+        # Catch up anything that fell due while the app was offline.
+        with SessionLocal() as db:
+            post_due_recurring(db)
+        # Keep the background poller off the isolated E2E database so tests stay
+        # deterministic; only run it for normal local use.
+        if not is_e2e_database():
+            poller = asyncio.create_task(_recurring_poller())
+
     yield
 
+    if poller is not None:
+        poller.cancel()
+        with suppress(asyncio.CancelledError):
+            await poller
 
-app = FastAPI(title="Smart Finance Tracker API", lifespan=lifespan)
+
+app = FastAPI(
+    title="Smart Finance Tracker API",
+    description=API_DESCRIPTION,
+    version="1.0.0",
+    contact={"name": "Smart Finance Tracker"},
+    license_info={"name": "MIT"},
+    openapi_tags=TAGS_METADATA,
+    lifespan=lifespan,
+)
+
+
+def _error_response(
+    status_code: int, code: str, message: str, details: object = None
+) -> JSONResponse:
+    return JSONResponse(
+        status_code=status_code,
+        content={"error": {"code": code, "message": message, "details": details}},
+    )
+
+
+_STATUS_CODES = {
+    400: "bad_request",
+    404: "not_found",
+    409: "conflict",
+    422: "validation_error",
+    500: "internal_error",
+}
+
+
+@app.exception_handler(StarletteHTTPException)
+async def http_exception_handler(
+    request: object, exc: StarletteHTTPException
+) -> JSONResponse:
+    code = _STATUS_CODES.get(exc.status_code, "error")
+    detail = exc.detail
+    message = detail if isinstance(detail, str) else "Request failed"
+    details = None if isinstance(detail, str) else detail
+    return _error_response(exc.status_code, code, message, details)
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(
+    request: object, exc: RequestValidationError
+) -> JSONResponse:
+    return _error_response(
+        422, "validation_error", "Validation failed", jsonable_encoder(exc.errors())
+    )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,16 +199,39 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-router = APIRouter(prefix="/api", tags=["finance"])
+router = APIRouter(prefix="/api")
 
 
-@router.get("/health")
+def _goal_read(goal: Goal) -> GoalRead:
+    target = goal.target_amount
+    current = goal.current_amount
+    remaining = target - current
+    if remaining < 0:
+        remaining = Decimal("0")
+    progress = float(min(current / target * 100, Decimal("100"))) if target > 0 else 0.0
+    return GoalRead(
+        id=goal.id,
+        name=goal.name,
+        target_amount=target,
+        current_amount=current,
+        target_date=goal.target_date,
+        remaining=remaining,
+        progress_pct=progress,
+    )
+
+
+@router.get("/health", tags=["meta"], summary="Service health check")
 def health() -> dict[str, str]:
     """Lightweight health check; exposes whether the isolated E2E database is in use."""
     return {"status": "ok", "database": "e2e" if is_e2e_database() else "default"}
 
 
-@router.get("/categories", response_model=CategoriesResponse)
+@router.get(
+    "/categories",
+    response_model=CategoriesResponse,
+    tags=["meta"],
+    summary="List predefined categories",
+)
 def get_categories() -> CategoriesResponse:
     return CategoriesResponse(
         income=INCOME_CATEGORIES,
@@ -101,7 +240,12 @@ def get_categories() -> CategoriesResponse:
     )
 
 
-@router.get("/transactions", response_model=TransactionsResponse)
+@router.get(
+    "/transactions",
+    response_model=TransactionsResponse,
+    tags=["transactions"],
+    summary="List transactions with filters, search, and pagination",
+)
 def get_transactions(
     db: DBDep,
     type: str | None = Query(None, pattern="^(income|expense)$"),
@@ -147,7 +291,11 @@ def get_transactions(
     )
 
 
-@router.get("/transactions/export")
+@router.get(
+    "/transactions/export",
+    tags=["transactions"],
+    summary="Export filtered transactions as CSV",
+)
 def export_transactions(
     db: DBDep,
     type: str | None = Query(None, pattern="^(income|expense)$"),
@@ -171,7 +319,12 @@ def export_transactions(
     )
 
 
-@router.get("/analytics", response_model=AnalyticsResponse)
+@router.get(
+    "/analytics",
+    response_model=AnalyticsResponse,
+    tags=["analytics"],
+    summary="Category and monthly breakdowns",
+)
 def get_analytics(
     db: DBDep,
     from_date: datetime | None = Query(None, alias="from"),
@@ -202,10 +355,22 @@ def get_analytics(
     return AnalyticsResponse(stats=stats, by_category=by_category, by_month=by_month)
 
 
+@router.get(
+    "/dashboard",
+    response_model=DashboardResponse,
+    tags=["analytics"],
+    summary="Current-month KPIs and month-over-month comparison",
+)
+def get_dashboard(db: DBDep) -> DashboardResponse:
+    return dashboard_summary(db)
+
+
 @router.post(
     "/transactions",
     status_code=status.HTTP_201_CREATED,
     response_model=TransactionRead,
+    tags=["transactions"],
+    summary="Create a transaction",
 )
 def create_transaction(payload: TransactionCreate, db: DBDep) -> TransactionRead:
     data = payload.model_dump()
@@ -218,7 +383,12 @@ def create_transaction(payload: TransactionCreate, db: DBDep) -> TransactionRead
     return transaction
 
 
-@router.put("/transactions/{transaction_id}", response_model=TransactionRead)
+@router.put(
+    "/transactions/{transaction_id}",
+    response_model=TransactionRead,
+    tags=["transactions"],
+    summary="Update a transaction",
+)
 def update_transaction(
     transaction_id: TransactionIdPath,
     payload: TransactionUpdate,
@@ -239,7 +409,12 @@ def update_transaction(
     return transaction
 
 
-@router.delete("/transactions/{transaction_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/transactions/{transaction_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["transactions"],
+    summary="Delete a transaction",
+)
 def delete_transaction(transaction_id: TransactionIdPath, db: DBDep) -> None:
     transaction = db.get(Transaction, transaction_id)
     if transaction is None:
@@ -250,7 +425,12 @@ def delete_transaction(transaction_id: TransactionIdPath, db: DBDep) -> None:
     db.commit()
 
 
-@router.get("/budgets", response_model=list[BudgetWithSpending])
+@router.get(
+    "/budgets",
+    response_model=list[BudgetWithSpending],
+    tags=["budgets"],
+    summary="List budgets with spending progress",
+)
 def get_budgets(
     db: DBDep,
     from_date: datetime | None = Query(None, alias="from"),
@@ -276,12 +456,22 @@ def get_budgets(
     return result
 
 
-@router.put("/budgets", response_model=BudgetRead)
+@router.put(
+    "/budgets",
+    response_model=BudgetRead,
+    tags=["budgets"],
+    summary="Create or update a category budget",
+)
 def set_budget(payload: BudgetCreate, db: DBDep) -> BudgetRead:
     return upsert_budget(db, payload.category, payload.amount)
 
 
-@router.delete("/budgets/{budget_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/budgets/{budget_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["budgets"],
+    summary="Delete a budget",
+)
 def remove_budget(budget_id: BudgetIdPath, db: DBDep) -> None:
     if not delete_budget(db, budget_id):
         raise HTTPException(
@@ -289,7 +479,12 @@ def remove_budget(budget_id: BudgetIdPath, db: DBDep) -> None:
         )
 
 
-@router.get("/recurring", response_model=list[RecurringRead])
+@router.get(
+    "/recurring",
+    response_model=list[RecurringRead],
+    tags=["recurring"],
+    summary="List recurring templates",
+)
 def get_recurring(db: DBDep) -> list[RecurringRead]:
     return list_recurring(db)
 
@@ -298,16 +493,27 @@ def get_recurring(db: DBDep) -> list[RecurringRead]:
     "/recurring",
     status_code=status.HTTP_201_CREATED,
     response_model=RecurringRead,
+    tags=["recurring"],
+    summary="Create a recurring template",
 )
 def create_recurring(payload: RecurringCreate, db: DBDep) -> RecurringRead:
     recurring = RecurringTransaction(**payload.model_dump())
     db.add(recurring)
     db.commit()
     db.refresh(recurring)
+    # Post immediately if the new template is already due, so users don't have to
+    # wait for the next poll cycle. "Post now" remains for posting early.
+    post_due_for_template(db, recurring.id)
+    db.refresh(recurring)
     return recurring
 
 
-@router.delete("/recurring/{recurring_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(
+    "/recurring/{recurring_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["recurring"],
+    summary="Delete a recurring template",
+)
 def delete_recurring(recurring_id: RecurringIdPath, db: DBDep) -> None:
     recurring = db.get(RecurringTransaction, recurring_id)
     if recurring is None:
@@ -323,6 +529,8 @@ def delete_recurring(recurring_id: RecurringIdPath, db: DBDep) -> None:
     "/recurring/{recurring_id}/post",
     status_code=status.HTTP_201_CREATED,
     response_model=TransactionRead,
+    tags=["recurring"],
+    summary="Manually post a recurring template now",
 )
 def post_recurring(recurring_id: RecurringIdPath, db: DBDep) -> TransactionRead:
     recurring = db.get(RecurringTransaction, recurring_id)
@@ -340,10 +548,80 @@ def post_recurring(recurring_id: RecurringIdPath, db: DBDep) -> TransactionRead:
         date=recurring.next_date,
     )
     db.add(transaction)
-    recurring.next_date = _advance_next_date(recurring.next_date, recurring.frequency)
+    recurring.next_date = advance_next_date(recurring.next_date, recurring.frequency)
     db.commit()
     db.refresh(transaction)
     return transaction
+
+
+@router.get(
+    "/goals",
+    response_model=list[GoalRead],
+    tags=["goals"],
+    summary="List savings goals",
+)
+def get_goals(db: DBDep) -> list[GoalRead]:
+    return [_goal_read(goal) for goal in list_goals(db)]
+
+
+@router.post(
+    "/goals",
+    status_code=status.HTTP_201_CREATED,
+    response_model=GoalRead,
+    tags=["goals"],
+    summary="Create a savings goal",
+)
+def create_goal(payload: GoalCreate, db: DBDep) -> GoalRead:
+    goal = Goal(**payload.model_dump())
+    db.add(goal)
+    db.commit()
+    db.refresh(goal)
+    return _goal_read(goal)
+
+
+@router.put(
+    "/goals/{goal_id}",
+    response_model=GoalRead,
+    tags=["goals"],
+    summary="Update a savings goal",
+)
+def edit_goal(goal_id: GoalIdPath, payload: GoalUpdate, db: DBDep) -> GoalRead:
+    goal = update_goal(db, goal_id, **payload.model_dump())
+    if goal is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+        )
+    return _goal_read(goal)
+
+
+@router.delete(
+    "/goals/{goal_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["goals"],
+    summary="Delete a savings goal",
+)
+def remove_goal(goal_id: GoalIdPath, db: DBDep) -> None:
+    if not delete_goal(db, goal_id):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+        )
+
+
+@router.post(
+    "/goals/{goal_id}/contribute",
+    response_model=GoalRead,
+    tags=["goals"],
+    summary="Add a contribution to a savings goal",
+)
+def contribute_goal(
+    goal_id: GoalIdPath, payload: GoalContribute, db: DBDep
+) -> GoalRead:
+    goal = contribute_to_goal(db, goal_id, payload.amount)
+    if goal is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"
+        )
+    return _goal_read(goal)
 
 
 app.include_router(router)

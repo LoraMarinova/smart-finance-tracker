@@ -52,10 +52,21 @@ async function request(url, options) {
   }
 
   if (!res.ok) {
-    const detail = body && typeof body === 'object' ? body.detail : body
-    const message =
-      formatValidationDetail(detail) || `Request failed (${res.status})`
-    throw new ApiError(message, res.status, detail)
+    // Supports the structured `{ error: { message, details } }` shape and the
+    // legacy `{ detail }` shape for backward compatibility.
+    let detail = body
+    let message = null
+    if (body && typeof body === 'object') {
+      if (body.error && typeof body.error === 'object') {
+        detail = body.error.details ?? null
+        message =
+          body.error.message || formatValidationDetail(detail)
+      } else {
+        detail = body.detail
+        message = formatValidationDetail(detail)
+      }
+    }
+    throw new ApiError(message || `Request failed (${res.status})`, res.status, detail)
   }
 
   return body
@@ -88,6 +99,10 @@ export function exportTransactions(filters = {}) {
 
 export function getAnalytics(filters = {}) {
   return request(`${BASE}/analytics${buildQuery(filters)}`)
+}
+
+export function getDashboard() {
+  return request(`${BASE}/dashboard`)
 }
 
 export function createTransaction(data) {
@@ -144,6 +159,30 @@ export function deleteRecurring(id) {
 
 export function postRecurring(id) {
   return request(`${BASE}/recurring/${id}/post`, { method: 'POST' })
+}
+
+export function getGoals() {
+  return request(`${BASE}/goals`)
+}
+
+export function createGoal(data) {
+  return request(`${BASE}/goals`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify(data),
+  })
+}
+
+export function deleteGoal(id) {
+  return request(`${BASE}/goals/${id}`, { method: 'DELETE' })
+}
+
+export function contributeToGoal(id, amount) {
+  return request(`${BASE}/goals/${id}/contribute`, {
+    method: 'POST',
+    headers: jsonHeaders,
+    body: JSON.stringify({ amount }),
+  })
 }
 
 export function downloadCsv(csvText, filename = 'transactions.csv') {

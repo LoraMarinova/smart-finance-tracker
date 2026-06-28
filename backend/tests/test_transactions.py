@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 def test_list_transactions_empty(client):
@@ -204,6 +204,7 @@ def test_budget_crud(client):
 
 
 def test_recurring_post(client):
+    # Future date so creation does not auto-post; this exercises manual "Post now".
     create_res = client.post(
         "/api/recurring",
         json={
@@ -211,16 +212,41 @@ def test_recurring_post(client):
             "amount": 50,
             "category": "Rent",
             "frequency": "monthly",
-            "next_date": "2026-02-01T00:00:00",
+            "next_date": "2099-02-01T00:00:00",
         },
     )
     recurring_id = create_res.json()["id"]
+
+    assert client.get("/api/transactions").json()["total"] == 0
 
     post_res = client.post(f"/api/recurring/{recurring_id}/post")
     assert post_res.status_code == 201
 
     list_res = client.get("/api/transactions")
     assert list_res.json()["total"] == 1
+
+
+def test_recurring_auto_posts_on_create_when_due(client):
+    past = (datetime.now() - timedelta(days=5)).isoformat()
+    create_res = client.post(
+        "/api/recurring",
+        json={
+            "type": "expense",
+            "amount": 12,
+            "category": "Subscriptions",
+            "frequency": "monthly",
+            "next_date": past,
+        },
+    )
+    assert create_res.status_code == 201
+
+    # The due occurrence is posted immediately, no manual action needed.
+    txs = client.get("/api/transactions").json()
+    assert txs["total"] == 1
+    assert txs["transactions"][0]["category"] == "Subscriptions"
+
+    # next_date is advanced into the future so it won't double-post.
+    assert datetime.fromisoformat(create_res.json()["next_date"]) > datetime.now()
 
 
 def test_get_categories(client):
@@ -366,7 +392,7 @@ def test_list_recurring_and_delete(client):
             "amount": 200,
             "category": "Freelance",
             "frequency": "weekly",
-            "next_date": "2026-04-01T00:00:00",
+            "next_date": "2099-04-01T00:00:00",
         },
     )
     recurring_id = create_res.json()["id"]
@@ -389,3 +415,163 @@ def test_recurring_post_not_found(client):
 def test_recurring_delete_not_found(client):
     res = client.delete("/api/recurring/9999")
     assert res.status_code == 404
+
+
+def test_dashboard_summary(client):
+    now = datetime.now()
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "income",
+            "amount": 1000,
+            "category": "Salary",
+            "date": now.isoformat(),
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 250,
+            "category": "Groceries",
+            "date": now.isoformat(),
+        },
+    )
+
+    res = client.get("/api/dashboard")
+    assert res.status_code == 200
+    body = res.json()
+    assert body["month"] == now.strftime("%Y-%m")
+    assert float(body["income"]) == 1000
+    assert float(body["expense"]) == 250
+    assert float(body["balance"]) == 750
+    assert body["top_category"] == "Groceries"
+    assert body["transaction_count"] == 2
+    assert "expense_comparison" in body
+
+
+def test_dashboard_budget_health(client):
+    now = datetime.now()
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 300,
+            "category": "Groceries",
+            "date": now.isoformat(),
+        },
+    )
+    client.put("/api/budgets", json={"category": "Groceries", "amount": 100})
+
+    body = client.get("/api/dashboard").json()
+    assert body["budgets_total"] == 1
+    assert body["budgets_over"] == 1
+
+
+def test_recurring_auto_post_due_occurrences(db_session):
+    from models import RecurringTransaction, Transaction
+    from repository import post_due_recurring
+
+    now = datetime.now()
+    # Due monthly template from ~45 days ago should catch up two postings.
+    db_session.add(
+        RecurringTransaction(
+            type="expense",
+            amount=50,
+            category="Rent",
+            description=None,
+            frequency="monthly",
+            next_date=now - timedelta(days=45),
+        )
+    )
+    # Future template should not post.
+    db_session.add(
+        RecurringTransaction(
+            type="expense",
+            amount=10,
+            category="Transport",
+            description=None,
+            frequency="weekly",
+            next_date=now + timedelta(days=7),
+        )
+    )
+    db_session.commit()
+
+    posted = post_due_recurring(db_session, now=now)
+    assert posted == 2
+
+    txs = db_session.query(Transaction).all()
+    assert len(txs) == 2
+    assert all(t.category == "Rent" for t in txs)
+
+    future = (
+        db_session.query(RecurringTransaction).filter_by(category="Transport").one()
+    )
+    assert future.next_date > now
+
+    # Running again posts nothing new.
+    assert post_due_recurring(db_session, now=now) == 0
+
+
+def test_goals_crud_and_contribute(client):
+    create_res = client.post(
+        "/api/goals",
+        json={"name": "Emergency fund", "target_amount": 1000},
+    )
+    assert create_res.status_code == 201
+    goal = create_res.json()
+    assert goal["name"] == "Emergency fund"
+    assert float(goal["current_amount"]) == 0
+    assert float(goal["remaining"]) == 1000
+    assert goal["progress_pct"] == 0
+    goal_id = goal["id"]
+
+    contribute_res = client.post(
+        f"/api/goals/{goal_id}/contribute", json={"amount": 250}
+    )
+    assert contribute_res.status_code == 200
+    contributed = contribute_res.json()
+    assert float(contributed["current_amount"]) == 250
+    assert float(contributed["remaining"]) == 750
+    assert contributed["progress_pct"] == 25
+
+    update_res = client.put(
+        f"/api/goals/{goal_id}",
+        json={"name": "Rainy day", "target_amount": 2000, "current_amount": 250},
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["name"] == "Rainy day"
+
+    list_res = client.get("/api/goals")
+    assert list_res.status_code == 200
+    assert len(list_res.json()) == 1
+
+    delete_res = client.delete(f"/api/goals/{goal_id}")
+    assert delete_res.status_code == 204
+    assert client.get("/api/goals").json() == []
+
+
+def test_goal_validation_and_not_found(client):
+    bad = client.post("/api/goals", json={"name": "x", "target_amount": 0})
+    assert bad.status_code == 422
+
+    assert client.delete("/api/goals/9999").status_code == 404
+    assert (
+        client.post("/api/goals/9999/contribute", json={"amount": 5}).status_code
+        == 404
+    )
+
+
+def test_structured_error_shape(client):
+    not_found = client.delete("/api/transactions/9999")
+    assert not_found.status_code == 404
+    body = not_found.json()
+    assert body["error"]["code"] == "not_found"
+    assert body["error"]["message"] == "Transaction not found"
+
+    invalid = client.post(
+        "/api/transactions",
+        json={"type": "expense", "amount": 0, "category": "Groceries"},
+    )
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "validation_error"

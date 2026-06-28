@@ -1,3 +1,5 @@
+import { DATE_PRESETS, presetRange } from '../datePresets.js'
+
 function FilterBar({ filters, categories, onChange, onExport, exporting }) {
   const categoryOptions =
     filters.type === 'income'
@@ -13,6 +15,11 @@ function FilterBar({ filters, categories, onChange, onExport, exporting }) {
     onChange(next)
   }
 
+  function applyPreset(preset) {
+    const { from, to } = presetRange(preset)
+    onChange({ ...filters, from, to })
+  }
+
   return (
     <section className="filters" aria-label="Transaction filters">
       <h2 className="section-title">Filter &amp; Search</h2>
@@ -21,6 +28,19 @@ function FilterBar({ filters, categories, onChange, onExport, exporting }) {
         range, or text. Export CSV downloads exactly what your current filters
         show.
       </p>
+
+      <div className="filter-presets" role="group" aria-label="Date range presets">
+        {DATE_PRESETS.map((preset) => (
+          <button
+            key={preset.id}
+            type="button"
+            className="btn btn--ghost btn--small"
+            onClick={() => applyPreset(preset.id)}
+          >
+            {preset.label}
+          </button>
+        ))}
+      </div>
 
       <div className="filters-grid">
         <label className="field">

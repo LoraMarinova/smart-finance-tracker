@@ -38,3 +38,15 @@ class RecurringTransaction(Base):
     description: Mapped[str | None] = mapped_column(String, nullable=True)
     frequency: Mapped[str] = mapped_column(String, nullable=False)
     next_date: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    target_amount: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    current_amount: Mapped[Decimal] = mapped_column(
+        Numeric(12, 2), nullable=False, server_default="0"
+    )
+    target_date: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
