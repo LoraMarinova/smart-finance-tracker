@@ -1,4 +1,5 @@
 import { memo } from 'react'
+import CategoryChip from './CategoryChip.jsx'
 
 const currency = new Intl.NumberFormat(undefined, {
   style: 'currency',
@@ -25,7 +26,9 @@ function TransactionRow({ transaction, onEdit, onDelete, busy }) {
           {transaction.type}
         </span>
       </td>
-      <td>{transaction.category}</td>
+      <td>
+        <CategoryChip category={transaction.category} />
+      </td>
       <td className="cell-desc">{transaction.description || '—'}</td>
       <td className={amountClass}>
         {sign}

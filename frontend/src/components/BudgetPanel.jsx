@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { getCategoryColor } from '../categoryColors.js'
+import CategoryChip from './CategoryChip.jsx'
 import { ListSkeleton } from './Skeleton.jsx'
 
 const currency = new Intl.NumberFormat(undefined, {
@@ -70,10 +72,11 @@ function BudgetPanel({
             const limit = Number(budget.amount)
             const pct = limit > 0 ? Math.min((spent / limit) * 100, 100) : 0
             const over = spent > limit
+            const barColor = getCategoryColor(budget.category)
             return (
               <li key={budget.id} className="budget-item">
                 <div className="budget-item-header">
-                  <strong>{budget.category}</strong>
+                  <CategoryChip category={budget.category} />
                   <span className={over ? 'amount negative' : 'amount'}>
                     {currency.format(spent)} / {currency.format(limit)}
                   </span>
@@ -81,7 +84,10 @@ function BudgetPanel({
                 <div className="budget-bar">
                   <div
                     className={`budget-bar-fill${over ? ' budget-bar-fill--over' : ''}`}
-                    style={{ width: `${pct}%` }}
+                    style={{
+                      width: `${pct}%`,
+                      background: over ? undefined : barColor,
+                    }}
                   />
                 </div>
                 <button

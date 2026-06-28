@@ -10,22 +10,12 @@ import {
   XAxis,
   YAxis,
 } from 'recharts'
+import { getCategoryColor } from '../categoryColors.js'
 
 const currency = new Intl.NumberFormat(undefined, {
   style: 'currency',
   currency: 'EUR',
 })
-
-const PIE_COLORS = [
-  '#2563eb',
-  '#7c3aed',
-  '#db2777',
-  '#ea580c',
-  '#ca8a04',
-  '#16a34a',
-  '#0891b2',
-  '#64748b',
-]
 
 function ChartsPanel({ analytics, loading }) {
   if (loading) {
@@ -69,8 +59,8 @@ function ChartsPanel({ analytics, loading }) {
               <XAxis dataKey="month" tick={{ fill: 'var(--muted)', fontSize: 12 }} />
               <YAxis tick={{ fill: 'var(--muted)', fontSize: 12 }} />
               <Tooltip formatter={(value) => currency.format(value)} />
-              <Bar dataKey="income" fill="#15803d" name="Income" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" fill="#b91c1c" name="Expense" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="income" fill="var(--positive)" name="Income" radius={[4, 4, 0, 0]} />
+              <Bar dataKey="expense" fill="var(--negative)" name="Expense" radius={[4, 4, 0, 0]} />
             </BarChart>
           </ResponsiveContainer>
         </div>
@@ -87,16 +77,15 @@ function ChartsPanel({ analytics, loading }) {
                 nameKey="name"
                 cx="50%"
                 cy="50%"
-                outerRadius={90}
+                innerRadius={52}
+                outerRadius={88}
+                paddingAngle={2}
                 label={({ name, percent }) =>
                   `${name} (${(percent * 100).toFixed(0)}%)`
                 }
               >
-                {byCategory.map((entry, index) => (
-                  <Cell
-                    key={entry.name}
-                    fill={PIE_COLORS[index % PIE_COLORS.length]}
-                  />
+                {byCategory.map((entry) => (
+                  <Cell key={entry.name} fill={getCategoryColor(entry.name)} />
                 ))}
               </Pie>
               <Tooltip formatter={(value) => currency.format(value)} />

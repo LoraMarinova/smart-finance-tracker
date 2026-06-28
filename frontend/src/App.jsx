@@ -115,6 +115,14 @@ function AppContent() {
   const [goalBusy, setGoalBusy] = useState(false)
   const [goalBusyId, setGoalBusyId] = useState(null)
 
+  const monthlyTrend = useMemo(() => {
+    if (!analytics?.by_month?.length) return []
+    return analytics.by_month.map((row) => ({
+      month: row.month,
+      net: Number(row.income) - Number(row.expense),
+    }))
+  }, [analytics])
+
   const [confirm, setConfirm] = useState(null)
 
   const dateFilters = useMemo(() => toDateFilters(filters), [filters])
@@ -536,6 +544,7 @@ function AppContent() {
         totalIncome={stats.total_income}
         totalExpense={stats.total_expense}
         balance={stats.balance}
+        monthlyTrend={monthlyTrend}
       />
 
       <section className="panel charts-section">

@@ -12,9 +12,9 @@ test('balance summary reflects seeded income and expenses', async ({ page, reque
   await page.goto('/')
 
   const summary = page.getByLabel('Balance summary')
-  await expect(summary.getByText('Total Income')).toBeVisible()
-  await expect(summary.getByText('Total Expense')).toBeVisible()
   await expect(summary.getByText('Net Balance')).toBeVisible()
+  await expect(summary.getByText('Income')).toBeVisible()
+  await expect(summary.getByText('Expense')).toBeVisible()
   await expect(summary).toContainText('500')
   await expect(summary).toContainText('125')
 })
@@ -121,7 +121,7 @@ test('setting a budget shows progress for that category', async ({ page, request
   await budgets.getByRole('button', { name: 'Set budget' }).click()
 
   await expect(page.getByText('Budget saved.')).toBeVisible()
-  await expect(budgets.locator('.budget-list strong')).toHaveText('Groceries')
+  await expect(budgets.locator('.budget-list .category-chip')).toHaveText('Groceries')
   await expect(budgets).toContainText('40')
   await expect(budgets).toContainText('200')
 })
