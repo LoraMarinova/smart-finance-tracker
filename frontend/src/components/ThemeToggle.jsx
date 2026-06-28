@@ -20,14 +20,16 @@ function ThemeToggle() {
     localStorage.setItem(STORAGE_KEY, theme)
   }, [theme])
 
+  const label = theme === 'dark' ? 'Light mode' : 'Dark mode'
+
   return (
     <button
       type="button"
       className="btn btn--ghost theme-toggle"
       onClick={() => setTheme((current) => (current === 'dark' ? 'light' : 'dark'))}
-      aria-label="Toggle dark mode"
+      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
     >
-      {theme === 'dark' ? 'Light mode' : 'Dark mode'}
+      {label}
     </button>
   )
 }

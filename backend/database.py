@@ -10,7 +10,14 @@ from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from alembic import command
 from alembic.config import Config
 
-DB_PATH = Path(__file__).resolve().parent / "finance.db"
+# The database file location can be overridden with FINANCE_DB_PATH. This keeps
+# end-to-end / throwaway runs from touching the developer's real finance.db.
+_DB_PATH_ENV = os.environ.get("FINANCE_DB_PATH")
+DB_PATH = (
+    Path(_DB_PATH_ENV).resolve()
+    if _DB_PATH_ENV
+    else Path(__file__).resolve().parent / "finance.db"
+)
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})

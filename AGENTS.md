@@ -62,8 +62,13 @@ Backend runs on `http://localhost:8000`, frontend dev server on `http://localhos
 
 ```powershell
 cd backend; pip install -r requirements-dev.txt; pytest; ruff check .
-cd frontend; npm test
+cd frontend; npm test            # Vitest unit tests (validation logic)
+cd frontend; npm run test:e2e    # Playwright UI/E2E tests (needs: npx playwright install chromium)
 ```
+
+- Backend unit/integration tests: pytest + FastAPI `TestClient` in `backend/tests/`.
+- Frontend unit tests: Vitest in `frontend/src/**` (scoped to `src/`, excludes `e2e/`).
+- Frontend UI/E2E tests: Playwright specs in `frontend/e2e/`. Playwright launches the backend (on an isolated `e2e_finance.db` via `FINANCE_DB_PATH`) and the Vite dev server automatically; it relies on `backend/.venv` existing.
 
 ## Definition of done
 

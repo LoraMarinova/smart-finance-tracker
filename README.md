@@ -145,12 +145,36 @@ cd frontend
 npm install
 ```
 
-Then run the tests (and optionally a production build):
+`npm test` runs the **Vitest** unit tests (currently the form-validation logic). Then optionally a production build:
 
 ```powershell
 npm test
 npm run build
 ```
+
+### End-to-end (UI) tests with Playwright
+
+Genuine browser-based UI tests live in `frontend/e2e/` and run with **Playwright**. They drive the real app in Chromium — adding, filtering, and deleting transactions, validation, and dark mode.
+
+**Prerequisites (run once):**
+
+- Backend virtual environment created (`backend/.venv`) with `requirements.txt` installed — Playwright starts the backend itself using that interpreter.
+- Node dependencies installed (`npm install`).
+- Chromium downloaded for Playwright:
+
+```powershell
+cd frontend
+npx playwright install chromium
+```
+
+**Run the E2E tests:**
+
+```powershell
+cd frontend
+npm run test:e2e
+```
+
+Playwright automatically starts the backend (on an isolated `e2e_finance.db`, so your real data is untouched) and the Vite dev server, runs the tests, then shuts them down. You do **not** need the servers running beforehand. For an interactive runner, use `npm run test:e2e:ui`.
 
 ## API
 
