@@ -1,3 +1,7 @@
+/**
+ * @param {Date} date
+ * @returns {string}
+ */
 function toIso(date) {
   const y = date.getFullYear()
   const m = String(date.getMonth() + 1).padStart(2, '0')
@@ -15,6 +19,9 @@ export const DATE_PRESETS = [
 /**
  * Returns `{ from, to }` as YYYY-MM-DD strings for a named preset.
  * `today` is injectable for deterministic tests.
+ * @param {string} preset
+ * @param {Date} [today]
+ * @returns {{ from: string, to: string }}
  */
 export function presetRange(preset, today = new Date()) {
   switch (preset) {

@@ -12,18 +12,20 @@ flowchart LR
 
 ## Tech stack
 
-- Backend: FastAPI, Uvicorn, SQLAlchemy, Pydantic v2, Alembic (Python 3.14)
+- Backend: FastAPI, Uvicorn, SQLAlchemy, Pydantic v2 + pydantic-settings, Alembic (Python 3.14)
 - Frontend: React 18 + Vite, Recharts, plain `fetch`
 - DB: SQLite file (`finance.db`), Alembic migrations on startup
-- Quality: pytest, Vitest, ruff, Docker Compose, GitHub Actions
+- Config: environment-driven settings centralized in `backend/config.py` (Pydantic `Settings`)
+- Quality: pytest (+coverage), Vitest (+coverage), ruff, JSDoc type-checking (`tsc --checkJs`), pre-commit (ruff + Prettier), Docker Compose, GitHub Actions
 
 ## Project layout
 
 - `backend/` — FastAPI app
   - `main.py` — app, CORS, API routes
-  - `repository.py` — SQL queries and aggregates
-  - `constants.py` — predefined categories
-  - `database.py` — engine, session, migration runner
+  - `repository.py` — SQL queries, aggregates, and entity CRUD (transactions, budgets, recurring, goals)
+  - `config.py` — Pydantic `Settings` for environment-driven config
+  - `constants.py` — predefined categories, page sizes, app version
+  - `database.py` — engine, session, connectivity check, migration runner
   - `models.py` — Transaction, Budget, RecurringTransaction
   - `schemas.py` — Pydantic models + validation
   - `alembic/` — database migrations

@@ -246,6 +246,27 @@ def list_recurring(db: Session) -> list[RecurringTransaction]:
     )
 
 
+def create_recurring(db: Session, data: dict[str, object]) -> RecurringTransaction:
+    recurring = RecurringTransaction(**data)
+    db.add(recurring)
+    db.commit()
+    db.refresh(recurring)
+    return recurring
+
+
+def get_recurring(db: Session, recurring_id: int) -> RecurringTransaction | None:
+    return db.get(RecurringTransaction, recurring_id)
+
+
+def delete_recurring(db: Session, recurring_id: int) -> bool:
+    recurring = db.get(RecurringTransaction, recurring_id)
+    if recurring is None:
+        return False
+    db.delete(recurring)
+    db.commit()
+    return True
+
+
 def advance_next_date(current: datetime, frequency: str) -> datetime:
     if frequency == "weekly":
         return current + timedelta(weeks=1)
@@ -388,6 +409,14 @@ def dashboard_summary(
 
 def list_goals(db: Session) -> list[Goal]:
     return list(db.scalars(select(Goal).order_by(Goal.id)).all())
+
+
+def create_goal(db: Session, data: dict[str, object]) -> Goal:
+    goal = Goal(**data)
+    db.add(goal)
+    db.commit()
+    db.refresh(goal)
+    return goal
 
 
 def update_goal(db: Session, goal_id: int, **fields: object) -> Goal | None:

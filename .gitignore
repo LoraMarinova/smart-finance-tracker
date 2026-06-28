@@ -23,6 +23,13 @@ playwright-report/
 test-results/
 playwright/.cache/
 
+# Coverage
+coverage/
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+
 # Environment / secrets
 .env
 .env.*

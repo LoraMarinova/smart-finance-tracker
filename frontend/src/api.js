@@ -1,6 +1,11 @@
 const BASE = '/api'
 
 export class ApiError extends Error {
+  /**
+   * @param {string} message
+   * @param {number} status
+   * @param {any} [details]
+   */
   constructor(message, status, details) {
     super(message)
     this.name = 'ApiError'
@@ -9,6 +14,10 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * @param {any} detail
+ * @returns {string | null}
+ */
 function formatValidationDetail(detail) {
   if (Array.isArray(detail)) {
     return detail
@@ -22,7 +31,13 @@ function formatValidationDetail(detail) {
   return null
 }
 
+/**
+ * @param {string} url
+ * @param {RequestInit} [options]
+ * @returns {Promise<any>}
+ */
 async function request(url, options) {
+  /** @type {Response} */
   let res
   try {
     res = await fetch(url, options)
@@ -74,6 +89,10 @@ async function request(url, options) {
 
 const jsonHeaders = { 'Content-Type': 'application/json' }
 
+/**
+ * @param {Record<string, any>} params
+ * @returns {string}
+ */
 function buildQuery(params) {
   const search = new URLSearchParams()
   for (const [key, value] of Object.entries(params)) {
@@ -105,6 +124,7 @@ export function getDashboard() {
   return request(`${BASE}/dashboard`)
 }
 
+/** @param {Record<string, any>} data */
 export function createTransaction(data) {
   return request(`${BASE}/transactions`, {
     method: 'POST',
@@ -113,6 +133,10 @@ export function createTransaction(data) {
   })
 }
 
+/**
+ * @param {number} id
+ * @param {Record<string, any>} data
+ */
 export function updateTransaction(id, data) {
   return request(`${BASE}/transactions/${id}`, {
     method: 'PUT',
@@ -121,6 +145,7 @@ export function updateTransaction(id, data) {
   })
 }
 
+/** @param {number} id */
 export function deleteTransaction(id) {
   return request(`${BASE}/transactions/${id}`, { method: 'DELETE' })
 }
@@ -129,6 +154,7 @@ export function getBudgets(filters = {}) {
   return request(`${BASE}/budgets${buildQuery(filters)}`)
 }
 
+/** @param {Record<string, any>} data */
 export function setBudget(data) {
   return request(`${BASE}/budgets`, {
     method: 'PUT',
@@ -137,6 +163,7 @@ export function setBudget(data) {
   })
 }
 
+/** @param {number} id */
 export function deleteBudget(id) {
   return request(`${BASE}/budgets/${id}`, { method: 'DELETE' })
 }
@@ -145,6 +172,7 @@ export function getRecurring() {
   return request(`${BASE}/recurring`)
 }
 
+/** @param {Record<string, any>} data */
 export function createRecurring(data) {
   return request(`${BASE}/recurring`, {
     method: 'POST',
@@ -153,10 +181,12 @@ export function createRecurring(data) {
   })
 }
 
+/** @param {number} id */
 export function deleteRecurring(id) {
   return request(`${BASE}/recurring/${id}`, { method: 'DELETE' })
 }
 
+/** @param {number} id */
 export function postRecurring(id) {
   return request(`${BASE}/recurring/${id}/post`, { method: 'POST' })
 }
@@ -165,6 +195,7 @@ export function getGoals() {
   return request(`${BASE}/goals`)
 }
 
+/** @param {Record<string, any>} data */
 export function createGoal(data) {
   return request(`${BASE}/goals`, {
     method: 'POST',
@@ -173,10 +204,15 @@ export function createGoal(data) {
   })
 }
 
+/** @param {number} id */
 export function deleteGoal(id) {
   return request(`${BASE}/goals/${id}`, { method: 'DELETE' })
 }
 
+/**
+ * @param {number} id
+ * @param {number} amount
+ */
 export function contributeToGoal(id, amount) {
   return request(`${BASE}/goals/${id}/contribute`, {
     method: 'POST',
@@ -185,6 +221,10 @@ export function contributeToGoal(id, amount) {
   })
 }
 
+/**
+ * @param {string} csvText
+ * @param {string} [filename]
+ */
 export function downloadCsv(csvText, filename = 'transactions.csv') {
   const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' })
   const url = URL.createObjectURL(blob)

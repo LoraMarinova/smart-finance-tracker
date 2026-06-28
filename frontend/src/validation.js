@@ -1,3 +1,19 @@
+/**
+ * @typedef {Object} Categories
+ * @property {string[]} income
+ * @property {string[]} expense
+ * @property {string[]} [all]
+ */
+
+/**
+ * @typedef {Object} TransactionFormValues
+ * @property {string} type
+ * @property {string} amount
+ * @property {string} category
+ * @property {string} [description]
+ * @property {string} [date]
+ */
+
 export const EMPTY_FORM = {
   type: 'expense',
   amount: '',
@@ -6,6 +22,11 @@ export const EMPTY_FORM = {
   date: '',
 }
 
+/**
+ * Map a transaction (or null) into editable form field values.
+ * @param {Record<string, any> | null | undefined} transaction
+ * @returns {TransactionFormValues}
+ */
 export function toFormState(transaction) {
   if (!transaction) return EMPTY_FORM
   return {
@@ -17,7 +38,13 @@ export function toFormState(transaction) {
   }
 }
 
+/**
+ * Validate the savings-goal form.
+ * @param {{ name?: string, target?: string | number }} values
+ * @returns {Record<string, string>}
+ */
 export function validateGoal(values) {
+  /** @type {Record<string, string>} */
   const errors = {}
   if (!values.name || !values.name.trim()) {
     errors.name = 'Name is required.'
@@ -31,7 +58,14 @@ export function validateGoal(values) {
   return errors
 }
 
+/**
+ * Validate the transaction form.
+ * @param {TransactionFormValues} values
+ * @param {Categories} [categories]
+ * @returns {Record<string, string>}
+ */
 export function validate(values, categories) {
+  /** @type {Record<string, string>} */
   const errors = {}
   if (values.type !== 'income' && values.type !== 'expense') {
     errors.type = 'Choose income or expense.'

@@ -1,5 +1,7 @@
 # Smart Finance Tracker
 
+[![CI](https://github.com/LoraMarinova/smart-finance-tracker/actions/workflows/ci.yml/badge.svg)](https://github.com/LoraMarinova/smart-finance-tracker/actions/workflows/ci.yml)
+
 A local-only personal finance tracker for logging income and expenses with real-time balance, filters, analytics charts, budgets, recurring templates, and CSV export. Built as a three-tier app: SQLite database, FastAPI REST API, and a React (Vite) UI. **No authentication** — intended to run on your machine only.
 
 ## Features
@@ -137,7 +139,13 @@ pytest
 ruff check .
 ```
 
-Tests run against a temporary throwaway SQLite database, so they never touch your real `finance.db`.
+Run tests with coverage (matches CI, which enforces a minimum):
+
+```powershell
+pytest --cov=. --cov-report=term-missing
+```
+
+Tests run against a temporary throwaway SQLite database, so they never touch your real `finance.db`. Environment-driven configuration (DB path, recurring poll interval, CORS origins) is centralized in `backend/config.py` (Pydantic `Settings`).
 
 ### Frontend tests & build
 
@@ -148,10 +156,12 @@ cd frontend
 npm install
 ```
 
-`npm test` runs the **Vitest** unit tests (form-validation logic and date-range presets). Then optionally a production build:
+`npm test` runs the **Vitest** unit tests (form-validation logic and date-range presets). There is also JSDoc-based type checking and coverage:
 
 ```powershell
 npm test
+npm run typecheck      # tsc --checkJs over the pure logic modules (jsconfig.json)
+npm run test:coverage  # Vitest with v8 coverage (enforces thresholds)
 npm run build
 ```
 
@@ -180,6 +190,18 @@ npm run test:e2e
 Playwright automatically starts **dedicated test servers** on ports **8001** (backend) and **5174** (frontend), using an isolated `e2e_finance.db` — your real `finance.db` on port 8000 is never touched. Each test run clears only the E2E database. You do **not** need (and should not rely on) your normal dev servers being up. For an interactive runner, use `npm run test:e2e:ui`.
 
 > **Important:** E2E tests delete all transactions in the test database before each test. An earlier version could accidentally reuse your dev backend on port 8000 and wipe real data; the config now uses separate ports and refuses to clear data unless the backend reports `database: "e2e"`.
+
+### Code style & pre-commit hooks
+
+Formatting and linting are enforced by [pre-commit](https://pre-commit.com/) (`ruff` lint + format for the backend, Prettier for the frontend, plus baseline file hooks). Enable it once:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+pre-commit install
+```
+
+Normalize the whole repo in one pass (optional, one-time): `pre-commit run --all-files`. Frontend formatting alone: `cd frontend; npm run format`.
 
 ## API
 
@@ -221,10 +243,14 @@ Recurring templates are posted automatically:
 
 You can still use the **"Post now"** button to post a template early (before it is due). The poller is disabled for the isolated E2E database to keep tests deterministic.
 
+Configuration is centralized in `backend/config.py` (Pydantic `Settings`); these environment variables override the defaults:
+
 | Env var | Default | Purpose |
 | ------- | ------- | ------- |
 | `FINANCE_DB_PATH` | `backend/finance.db` | Override the SQLite file location (used by E2E) |
+| `FINANCE_TESTING` | `false` | Skip startup migrations/schedulers (set by pytest) |
 | `RECURRING_POLL_SECONDS` | `3600` | How often the background poller posts due recurring entries |
+| `CORS_ORIGINS` | localhost 5173/5174 | Allowed browser origins |
 
 ## Opening / viewing the database
 

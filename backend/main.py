@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import os
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
@@ -16,6 +15,7 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.responses import Response
 
+from config import settings
 from constants import (
     ALL_CATEGORIES,
     APP_VERSION,
@@ -31,7 +31,7 @@ from database import (
     is_e2e_database,
     run_migrations,
 )
-from models import Goal, RecurringTransaction, Transaction
+from models import Goal, Transaction
 from models import Transaction as TxModel
 from repository import (
     _apply_transaction_filters,
@@ -54,6 +54,18 @@ from repository import (
     total_pages,
     update_goal,
     upsert_budget,
+)
+from repository import (
+    create_goal as repo_create_goal,
+)
+from repository import (
+    create_recurring as repo_create_recurring,
+)
+from repository import (
+    delete_recurring as repo_delete_recurring,
+)
+from repository import (
+    get_recurring as repo_get_recurring,
 )
 from schemas import (
     AnalyticsResponse,
@@ -127,7 +139,7 @@ def _default_date() -> datetime:
 
 async def _recurring_poller() -> None:
     """Periodically post due recurring transactions while the app runs."""
-    interval = int(os.environ.get("RECURRING_POLL_SECONDS", "3600"))
+    interval = settings.recurring_poll_seconds
     while True:
         await asyncio.sleep(interval)
         try:
@@ -144,7 +156,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     run_migrations()
 
     poller: asyncio.Task[None] | None = None
-    if os.environ.get("FINANCE_TESTING") != "1":
+    if not settings.finance_testing:
         # Catch up anything that fell due while the app was offline.
         with SessionLocal() as db:
             post_due_recurring(db)
@@ -241,12 +253,7 @@ async def validation_exception_handler(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5174",
-    ],
+    allow_origins=settings.cors_origins,
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -595,10 +602,7 @@ def get_recurring(db: DBDep) -> list[RecurringRead]:
     responses={422: ERROR_RESPONSES[422]},
 )
 def create_recurring(payload: RecurringCreate, db: DBDep) -> RecurringRead:
-    recurring = RecurringTransaction(**payload.model_dump())
-    db.add(recurring)
-    db.commit()
-    db.refresh(recurring)
+    recurring = repo_create_recurring(db, payload.model_dump())
     # Post immediately if the new template is already due, so users don't have to
     # wait for the next poll cycle. "Post now" remains for posting early.
     post_due_for_template(db, recurring.id)
@@ -614,14 +618,11 @@ def create_recurring(payload: RecurringCreate, db: DBDep) -> RecurringRead:
     responses={404: ERROR_RESPONSES[404]},
 )
 def delete_recurring(recurring_id: RecurringIdPath, db: DBDep) -> None:
-    recurring = db.get(RecurringTransaction, recurring_id)
-    if recurring is None:
+    if not repo_delete_recurring(db, recurring_id):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recurring transaction not found",
         )
-    db.delete(recurring)
-    db.commit()
 
 
 @router.post(
@@ -634,7 +635,7 @@ def delete_recurring(recurring_id: RecurringIdPath, db: DBDep) -> None:
     responses={404: ERROR_RESPONSES[404]},
 )
 def post_recurring(recurring_id: RecurringIdPath, db: DBDep) -> TransactionRead:
-    recurring = db.get(RecurringTransaction, recurring_id)
+    recurring = repo_get_recurring(db, recurring_id)
     if recurring is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -675,10 +676,7 @@ def get_goals(db: DBDep) -> list[GoalRead]:
     responses={422: ERROR_RESPONSES[422]},
 )
 def create_goal(payload: GoalCreate, db: DBDep) -> GoalRead:
-    goal = Goal(**payload.model_dump())
-    db.add(goal)
-    db.commit()
-    db.refresh(goal)
+    goal = repo_create_goal(db, payload.model_dump())
     return _goal_read(goal)
 
 
