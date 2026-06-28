@@ -1,12 +1,21 @@
 import { useState } from 'react'
 import { validateGoal } from '../validation.js'
+import { ListSkeleton } from './Skeleton.jsx'
 
 const currency = new Intl.NumberFormat(undefined, {
   style: 'currency',
   currency: 'EUR',
 })
 
-function GoalPanel({ goals, onCreate, onContribute, onDelete, busyId, busy }) {
+function GoalPanel({
+  goals,
+  onCreate,
+  onContribute,
+  onDelete,
+  busyId,
+  busy,
+  loading = false,
+}) {
   const [name, setName] = useState('')
   const [target, setTarget] = useState('')
   const [errors, setErrors] = useState({})
@@ -85,7 +94,9 @@ function GoalPanel({ goals, onCreate, onContribute, onDelete, busyId, busy }) {
         </button>
       </form>
 
-      {goals.length === 0 ? (
+      {loading ? (
+        <ListSkeleton />
+      ) : goals.length === 0 ? (
         <p className="empty-hint">No savings goals yet.</p>
       ) : (
         <ul className="goal-list">

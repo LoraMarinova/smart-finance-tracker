@@ -263,6 +263,9 @@ def test_health(client):
     body = res.json()
     assert body["status"] == "ok"
     assert body["database"] in ("default", "e2e")
+    assert body["db_ok"] is True
+    assert isinstance(body["version"], str) and body["version"]
+    assert body["uptime_seconds"] >= 0
 
 
 def test_stats_balance_is_income_minus_expense(client):
@@ -574,4 +577,8 @@ def test_structured_error_shape(client):
         json={"type": "expense", "amount": 0, "category": "Groceries"},
     )
     assert invalid.status_code == 422
-    assert invalid.json()["error"]["code"] == "validation_error"
+    error = invalid.json()["error"]
+    assert error["code"] == "validation_error"
+    # The offending field is surfaced for single-field validation failures.
+    assert error["field"] == "amount"
+    assert isinstance(error["details"], list)

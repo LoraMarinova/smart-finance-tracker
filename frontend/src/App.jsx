@@ -26,6 +26,7 @@ import BudgetPanel from './components/BudgetPanel.jsx'
 import ChartsPanel from './components/ChartsPanel.jsx'
 import ConfirmDialog from './components/ConfirmDialog.jsx'
 import DashboardCards from './components/DashboardCards.jsx'
+import ErrorState from './components/ErrorState.jsx'
 import FilterBar from './components/FilterBar.jsx'
 import GoalPanel from './components/GoalPanel.jsx'
 import RecurringPanel from './components/RecurringPanel.jsx'
@@ -99,7 +100,9 @@ function AppContent() {
   const [loading, setLoading] = useState(true)
   const [chartsLoading, setChartsLoading] = useState(true)
   const [dashboardLoading, setDashboardLoading] = useState(true)
+  const [panelsLoading, setPanelsLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const [retrying, setRetrying] = useState(false)
 
   const [editing, setEditing] = useState(null)
   const [submitting, setSubmitting] = useState(false)
@@ -183,16 +186,16 @@ function AppContent() {
       .catch((err) => {
         if (active) setLoadError(err.message)
       })
-    getRecurring()
-      .then((data) => {
+    Promise.allSettled([
+      getRecurring().then((data) => {
         if (active) setRecurring(data ?? [])
-      })
-      .catch(() => {})
-    getGoals()
-      .then((data) => {
+      }),
+      getGoals().then((data) => {
         if (active) setGoals(data ?? [])
-      })
-      .catch(() => {})
+      }),
+    ]).finally(() => {
+      if (active) setPanelsLoading(false)
+    })
     getDashboard()
       .then((data) => {
         if (active) setDashboard(data)
@@ -243,6 +246,20 @@ function AppContent() {
       active = false
     }
   }, [filters, dateFilters, pageSize])
+
+  const handleRetry = useCallback(async () => {
+    setRetrying(true)
+    setLoading(true)
+    try {
+      await Promise.all([refreshAll(1), refreshGoals()])
+      setLoadError(null)
+    } catch (err) {
+      setLoadError(err.message)
+    } finally {
+      setRetrying(false)
+      setLoading(false)
+    }
+  }, [refreshAll, refreshGoals])
 
   const handleFiltersChange = useCallback((next) => {
     setFilters(next)
@@ -505,6 +522,14 @@ function AppContent() {
         </div>
       </header>
 
+      {loadError ? (
+        <ErrorState
+          message={loadError}
+          onRetry={handleRetry}
+          retrying={retrying}
+        />
+      ) : null}
+
       <DashboardCards data={dashboard} loading={dashboardLoading} />
 
       <BalanceSummary
@@ -538,7 +563,6 @@ function AppContent() {
 
       <section className="list-section">
         <h2 className="section-title">Transactions</h2>
-        {loadError ? <p className="form-error" role="alert">{loadError}</p> : null}
         {loading ? (
           <TableSkeleton rows={pageSize > 10 ? 10 : pageSize} />
         ) : (
@@ -565,6 +589,7 @@ function AppContent() {
           onSetBudget={handleSetBudget}
           onDeleteBudget={handleDeleteBudget}
           busy={budgetBusy}
+          loading={panelsLoading}
         />
         <RecurringPanel
           items={recurring}
@@ -573,6 +598,7 @@ function AppContent() {
           onDelete={handleDeleteRecurring}
           onPost={handlePostRecurring}
           busyId={recurringBusyId}
+          loading={panelsLoading}
         />
         <GoalPanel
           goals={goals}
@@ -581,6 +607,7 @@ function AppContent() {
           onDelete={handleDeleteGoal}
           busy={goalBusy}
           busyId={goalBusyId}
+          loading={panelsLoading}
         />
       </div>
 

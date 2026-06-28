@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { ListSkeleton } from './Skeleton.jsx'
 
 const currency = new Intl.NumberFormat(undefined, {
   style: 'currency',
@@ -19,6 +20,7 @@ function RecurringPanel({
   onDelete,
   onPost,
   busyId,
+  loading = false,
 }) {
   const [values, setValues] = useState({
     type: 'expense',
@@ -127,7 +129,9 @@ function RecurringPanel({
         </button>
       </form>
 
-      {items.length === 0 ? (
+      {loading ? (
+        <ListSkeleton />
+      ) : items.length === 0 ? (
         <p className="empty-hint">No recurring templates yet.</p>
       ) : (
         <ul className="recurring-list">

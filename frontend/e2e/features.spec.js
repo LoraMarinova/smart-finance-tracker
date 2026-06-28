@@ -202,6 +202,16 @@ test('savings goal can be created and contributed to', async ({ page }) => {
   await expect(item).toContainText('250')
 })
 
+test('side panels show friendly empty states when there is no data', async ({
+  page,
+}) => {
+  await page.goto('/')
+
+  await expect(page.getByText('No budgets set yet.')).toBeVisible()
+  await expect(page.getByText('No recurring templates yet.')).toBeVisible()
+  await expect(page.getByText('No savings goals yet.')).toBeVisible()
+})
+
 test('goal form shows validation errors for missing fields', async ({ page }) => {
   await page.goto('/')
 

@@ -24,6 +24,19 @@ export function TableSkeleton({ rows = 5 }) {
   )
 }
 
+export function ListSkeleton({ rows = 3 }) {
+  return (
+    <div className="skeleton-list" aria-busy="true" aria-label="Loading">
+      {Array.from({ length: rows }).map((_, i) => (
+        <div key={i} className="skeleton-list-item">
+          <Skeleton width="40%" height="0.9rem" />
+          <Skeleton width="100%" height="0.6rem" />
+        </div>
+      ))}
+    </div>
+  )
+}
+
 export function CardSkeleton({ count = 2 }) {
   return (
     <div className="skeleton-cards" aria-busy="true" aria-label="Loading">

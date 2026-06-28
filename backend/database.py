@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from alembic import command
@@ -25,9 +25,20 @@ def is_e2e_database() -> bool:
     """True when the app is pointed at the isolated Playwright test database."""
     return _DB_PATH_ENV is not None
 
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
+
+
+def check_database_connection() -> bool:
+    """Return True if a trivial query succeeds against the database."""
+    try:
+        with SessionLocal() as session:
+            session.execute(text("SELECT 1"))
+        return True
+    except Exception:
+        return False
 
 
 class Base(DeclarativeBase):

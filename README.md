@@ -187,7 +187,7 @@ Base path: `/api`
 
 | Method | Path | Description |
 | ------ | ---- | ----------- |
-| GET | `/health` | Health check; reports whether the isolated E2E database is in use |
+| GET | `/health` | Health check: `status`, `database`, `db_ok`, `version`, `uptime_seconds` (HTTP 503 when the DB check fails) |
 | GET | `/categories` | Predefined income/expense category lists |
 | GET | `/transactions` | Paginated list + filtered stats (`type`, `category`, `from`, `to`, `search`, `page`, `page_size`) |
 | GET | `/transactions/export` | CSV export with same filters |
@@ -209,7 +209,7 @@ Base path: `/api`
 | POST | `/goals/{id}/contribute` | Add a contribution to a goal |
 | DELETE | `/goals/{id}` | Delete a savings goal |
 
-Amounts use `Decimal` (12,2) in the database. Invalid input returns HTTP 422; missing IDs return 404. Errors use a structured shape: `{ "error": { "code", "message", "details" } }`.
+Amounts use `Decimal` (12,2) in the database. Invalid input returns HTTP 422; missing IDs return 404. Errors use a structured shape: `{ "error": { "code", "message", "field", "details" } }` (`field` is set for single-field validation errors). The error models and per-route `404`/`422` responses are documented in the OpenAPI schema at `/docs`. Each request is logged (method, path, status, duration).
 
 ### Recurring auto-posting
 

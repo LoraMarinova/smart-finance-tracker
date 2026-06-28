@@ -11,6 +11,29 @@ RecurringFrequency = Literal["weekly", "monthly"]
 NonEmptyStr = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
+class ErrorDetail(BaseModel):
+    code: str = Field(description="Machine-readable error code, e.g. 'not_found'.")
+    message: str = Field(description="Human-readable error message.")
+    field: str | None = Field(
+        default=None, description="Offending field for single-field validation errors."
+    )
+    details: object | None = Field(
+        default=None, description="Optional structured details (e.g. validation list)."
+    )
+
+
+class ErrorResponse(BaseModel):
+    error: ErrorDetail
+
+
+class HealthResponse(BaseModel):
+    status: Literal["ok", "degraded"]
+    database: Literal["default", "e2e"]
+    db_ok: bool
+    version: str
+    uptime_seconds: float
+
+
 def _validate_category_for_type(category: str, tx_type: str) -> str:
     allowed = INCOME_CATEGORIES if tx_type == "income" else EXPENSE_CATEGORIES
     if category not in allowed:

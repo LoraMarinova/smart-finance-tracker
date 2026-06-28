@@ -54,7 +54,7 @@ flowchart LR
 
 ## API endpoints
 
-- `GET /api/health` — health check, reports whether the isolated E2E database is active
+- `GET /api/health` — health check: status, DB connectivity (`db_ok`), app version, uptime, and whether the isolated E2E database is active (HTTP 503 when degraded)
 - `GET /api/categories` — income/expense category lists
 - `GET /api/transactions` — paginated list + filtered stats; query: `type`, `category`, `from`, `to`, `search`, `page`, `page_size`
 - `GET /api/transactions/export` — CSV download with same filters
@@ -65,7 +65,7 @@ flowchart LR
 - `GET/POST/DELETE /api/recurring`, `POST /api/recurring/{id}/post` — recurring templates
 - `GET/POST/PUT/DELETE /api/goals`, `POST /api/goals/{id}/contribute` — savings goals
 
-Errors use a structured shape: `{ "error": { "code", "message", "details" } }`. OpenAPI operations are grouped with tags (transactions, analytics, budgets, recurring, goals, meta).
+Errors use a structured shape: `{ "error": { "code", "message", "field", "details" } }` (`field` set for single-field validation errors). OpenAPI operations are grouped with tags (transactions, analytics, budgets, recurring, goals, meta), document their `404`/`422` responses, and every request is logged (method, path, status, duration).
 
 ## Validation
 

@@ -1,27 +1,36 @@
 import asyncio
 import logging
 import os
-from collections.abc import AsyncIterator
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from datetime import datetime
 from decimal import Decimal
 from typing import Annotated
 
-from fastapi import APIRouter, FastAPI, HTTPException, Path, Query, status
+from fastapi import APIRouter, FastAPI, HTTPException, Path, Query, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from starlette.responses import Response
 
 from constants import (
     ALL_CATEGORIES,
+    APP_VERSION,
     DEFAULT_PAGE_SIZE,
     EXPENSE_CATEGORIES,
     INCOME_CATEGORIES,
     MAX_PAGE_SIZE,
 )
-from database import DBDep, SessionLocal, is_e2e_database, run_migrations
+from database import (
+    DBDep,
+    SessionLocal,
+    check_database_connection,
+    is_e2e_database,
+    run_migrations,
+)
 from models import Goal, RecurringTransaction, Transaction
 from models import Transaction as TxModel
 from repository import (
@@ -54,10 +63,12 @@ from schemas import (
     CategoriesResponse,
     CategoryBreakdown,
     DashboardResponse,
+    ErrorResponse,
     GoalContribute,
     GoalCreate,
     GoalRead,
     GoalUpdate,
+    HealthResponse,
     MonthlyBreakdown,
     RecurringCreate,
     RecurringRead,
@@ -67,7 +78,19 @@ from schemas import (
     TransactionUpdate,
 )
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 logger = logging.getLogger("finance")
+
+_START_MONOTONIC = time.monotonic()
+
+# Reusable OpenAPI documentation for the structured error responses.
+ERROR_RESPONSES: dict[int | str, dict[str, object]] = {
+    404: {"model": ErrorResponse, "description": "Resource not found"},
+    422: {"model": ErrorResponse, "description": "Validation error"},
+}
 
 TransactionIdPath = Annotated[int, Path(ge=1, description="The transaction ID")]
 BudgetIdPath = Annotated[int, Path(ge=1, description="The budget ID")]
@@ -141,7 +164,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(
     title="Smart Finance Tracker API",
     description=API_DESCRIPTION,
-    version="1.0.0",
+    version=APP_VERSION,
     contact={"name": "Smart Finance Tracker"},
     license_info={"name": "MIT"},
     openapi_tags=TAGS_METADATA,
@@ -150,11 +173,22 @@ app = FastAPI(
 
 
 def _error_response(
-    status_code: int, code: str, message: str, details: object = None
+    status_code: int,
+    code: str,
+    message: str,
+    field: str | None = None,
+    details: object = None,
 ) -> JSONResponse:
     return JSONResponse(
         status_code=status_code,
-        content={"error": {"code": code, "message": message, "details": details}},
+        content={
+            "error": {
+                "code": code,
+                "message": message,
+                "field": field,
+                "details": details,
+            }
+        },
     )
 
 
@@ -167,23 +201,41 @@ _STATUS_CODES = {
 }
 
 
+def _first_invalid_field(errors: list[dict[str, object]]) -> str | None:
+    """Best-effort extraction of the offending field name from validation errors."""
+    if not errors:
+        return None
+    loc = errors[0].get("loc") or []
+    parts = [
+        part
+        for part in loc
+        if isinstance(part, str) and part not in ("body", "query", "path")
+    ]
+    return parts[-1] if parts else None
+
+
 @app.exception_handler(StarletteHTTPException)
 async def http_exception_handler(
-    request: object, exc: StarletteHTTPException
+    request: Request, exc: StarletteHTTPException
 ) -> JSONResponse:
     code = _STATUS_CODES.get(exc.status_code, "error")
     detail = exc.detail
     message = detail if isinstance(detail, str) else "Request failed"
     details = None if isinstance(detail, str) else detail
-    return _error_response(exc.status_code, code, message, details)
+    return _error_response(exc.status_code, code, message, details=details)
 
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(
-    request: object, exc: RequestValidationError
+    request: Request, exc: RequestValidationError
 ) -> JSONResponse:
+    errors = jsonable_encoder(exc.errors())
     return _error_response(
-        422, "validation_error", "Validation failed", jsonable_encoder(exc.errors())
+        422,
+        "validation_error",
+        "Validation failed",
+        field=_first_invalid_field(errors),
+        details=errors,
     )
 
 
@@ -198,6 +250,23 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.middleware("http")
+async def log_requests(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration_ms = (time.perf_counter() - start) * 1000
+    logger.info(
+        "%s %s -> %d (%.1f ms)",
+        request.method,
+        request.url.path,
+        response.status_code,
+        duration_ms,
+    )
+    return response
 
 router = APIRouter(prefix="/api")
 
@@ -220,10 +289,29 @@ def _goal_read(goal: Goal) -> GoalRead:
     )
 
 
-@router.get("/health", tags=["meta"], summary="Service health check")
-def health() -> dict[str, str]:
-    """Lightweight health check; exposes whether the isolated E2E database is in use."""
-    return {"status": "ok", "database": "e2e" if is_e2e_database() else "default"}
+@router.get(
+    "/health",
+    response_model=HealthResponse,
+    tags=["meta"],
+    summary="Service health check",
+    response_description="Service status, DB connectivity, version, and uptime",
+)
+def health() -> JSONResponse:
+    """Report database connectivity, app version, and uptime.
+
+    Also exposes whether the isolated E2E database is in use. Returns HTTP 503
+    with ``status: "degraded"`` when the database check fails.
+    """
+    db_ok = check_database_connection()
+    payload = HealthResponse(
+        status="ok" if db_ok else "degraded",
+        database="e2e" if is_e2e_database() else "default",
+        db_ok=db_ok,
+        version=APP_VERSION,
+        uptime_seconds=round(time.monotonic() - _START_MONOTONIC, 3),
+    )
+    status_code = status.HTTP_200_OK if db_ok else status.HTTP_503_SERVICE_UNAVAILABLE
+    return JSONResponse(status_code=status_code, content=payload.model_dump())
 
 
 @router.get(
@@ -371,6 +459,8 @@ def get_dashboard(db: DBDep) -> DashboardResponse:
     response_model=TransactionRead,
     tags=["transactions"],
     summary="Create a transaction",
+    response_description="The created transaction",
+    responses=ERROR_RESPONSES,
 )
 def create_transaction(payload: TransactionCreate, db: DBDep) -> TransactionRead:
     data = payload.model_dump()
@@ -388,6 +478,8 @@ def create_transaction(payload: TransactionCreate, db: DBDep) -> TransactionRead
     response_model=TransactionRead,
     tags=["transactions"],
     summary="Update a transaction",
+    response_description="The updated transaction",
+    responses=ERROR_RESPONSES,
 )
 def update_transaction(
     transaction_id: TransactionIdPath,
@@ -414,6 +506,7 @@ def update_transaction(
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["transactions"],
     summary="Delete a transaction",
+    responses={404: ERROR_RESPONSES[404]},
 )
 def delete_transaction(transaction_id: TransactionIdPath, db: DBDep) -> None:
     transaction = db.get(Transaction, transaction_id)
@@ -461,6 +554,8 @@ def get_budgets(
     response_model=BudgetRead,
     tags=["budgets"],
     summary="Create or update a category budget",
+    response_description="The saved budget",
+    responses={422: ERROR_RESPONSES[422]},
 )
 def set_budget(payload: BudgetCreate, db: DBDep) -> BudgetRead:
     return upsert_budget(db, payload.category, payload.amount)
@@ -471,6 +566,7 @@ def set_budget(payload: BudgetCreate, db: DBDep) -> BudgetRead:
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["budgets"],
     summary="Delete a budget",
+    responses={404: ERROR_RESPONSES[404]},
 )
 def remove_budget(budget_id: BudgetIdPath, db: DBDep) -> None:
     if not delete_budget(db, budget_id):
@@ -495,6 +591,8 @@ def get_recurring(db: DBDep) -> list[RecurringRead]:
     response_model=RecurringRead,
     tags=["recurring"],
     summary="Create a recurring template",
+    response_description="The created recurring template",
+    responses={422: ERROR_RESPONSES[422]},
 )
 def create_recurring(payload: RecurringCreate, db: DBDep) -> RecurringRead:
     recurring = RecurringTransaction(**payload.model_dump())
@@ -513,6 +611,7 @@ def create_recurring(payload: RecurringCreate, db: DBDep) -> RecurringRead:
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["recurring"],
     summary="Delete a recurring template",
+    responses={404: ERROR_RESPONSES[404]},
 )
 def delete_recurring(recurring_id: RecurringIdPath, db: DBDep) -> None:
     recurring = db.get(RecurringTransaction, recurring_id)
@@ -531,6 +630,8 @@ def delete_recurring(recurring_id: RecurringIdPath, db: DBDep) -> None:
     response_model=TransactionRead,
     tags=["recurring"],
     summary="Manually post a recurring template now",
+    response_description="The posted transaction",
+    responses={404: ERROR_RESPONSES[404]},
 )
 def post_recurring(recurring_id: RecurringIdPath, db: DBDep) -> TransactionRead:
     recurring = db.get(RecurringTransaction, recurring_id)
@@ -570,6 +671,8 @@ def get_goals(db: DBDep) -> list[GoalRead]:
     response_model=GoalRead,
     tags=["goals"],
     summary="Create a savings goal",
+    response_description="The created goal",
+    responses={422: ERROR_RESPONSES[422]},
 )
 def create_goal(payload: GoalCreate, db: DBDep) -> GoalRead:
     goal = Goal(**payload.model_dump())
@@ -584,6 +687,8 @@ def create_goal(payload: GoalCreate, db: DBDep) -> GoalRead:
     response_model=GoalRead,
     tags=["goals"],
     summary="Update a savings goal",
+    response_description="The updated goal",
+    responses=ERROR_RESPONSES,
 )
 def edit_goal(goal_id: GoalIdPath, payload: GoalUpdate, db: DBDep) -> GoalRead:
     goal = update_goal(db, goal_id, **payload.model_dump())
@@ -599,6 +704,7 @@ def edit_goal(goal_id: GoalIdPath, payload: GoalUpdate, db: DBDep) -> GoalRead:
     status_code=status.HTTP_204_NO_CONTENT,
     tags=["goals"],
     summary="Delete a savings goal",
+    responses={404: ERROR_RESPONSES[404]},
 )
 def remove_goal(goal_id: GoalIdPath, db: DBDep) -> None:
     if not delete_goal(db, goal_id):
@@ -612,6 +718,8 @@ def remove_goal(goal_id: GoalIdPath, db: DBDep) -> None:
     response_model=GoalRead,
     tags=["goals"],
     summary="Add a contribution to a savings goal",
+    response_description="The updated goal",
+    responses=ERROR_RESPONSES,
 )
 def contribute_goal(
     goal_id: GoalIdPath, payload: GoalContribute, db: DBDep

@@ -1,11 +1,19 @@
 import { useState } from 'react'
+import { ListSkeleton } from './Skeleton.jsx'
 
 const currency = new Intl.NumberFormat(undefined, {
   style: 'currency',
   currency: 'EUR',
 })
 
-function BudgetPanel({ budgets, categories, onSetBudget, onDeleteBudget, busy }) {
+function BudgetPanel({
+  budgets,
+  categories,
+  onSetBudget,
+  onDeleteBudget,
+  busy,
+  loading = false,
+}) {
   const [category, setCategory] = useState('')
   const [amount, setAmount] = useState('')
 
@@ -51,7 +59,9 @@ function BudgetPanel({ budgets, categories, onSetBudget, onDeleteBudget, busy })
         </button>
       </form>
 
-      {budgets.length === 0 ? (
+      {loading ? (
+        <ListSkeleton />
+      ) : budgets.length === 0 ? (
         <p className="empty-hint">No budgets set yet.</p>
       ) : (
         <ul className="budget-list">
