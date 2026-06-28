@@ -20,6 +20,11 @@ DB_PATH = (
 )
 DATABASE_URL = f"sqlite:///{DB_PATH}"
 
+
+def is_e2e_database() -> bool:
+    """True when the app is pointed at the isolated Playwright test database."""
+    return _DB_PATH_ENV is not None
+
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)

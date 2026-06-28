@@ -68,12 +68,53 @@ cd frontend; npm run test:e2e    # Playwright UI/E2E tests (needs: npx playwrigh
 
 - Backend unit/integration tests: pytest + FastAPI `TestClient` in `backend/tests/`.
 - Frontend unit tests: Vitest in `frontend/src/**` (scoped to `src/`, excludes `e2e/`).
-- Frontend UI/E2E tests: Playwright specs in `frontend/e2e/`. Playwright launches the backend (on an isolated `e2e_finance.db` via `FINANCE_DB_PATH`) and the Vite dev server automatically; it relies on `backend/.venv` existing.
+- Frontend UI/E2E tests: Playwright specs in `frontend/e2e/`. Playwright starts dedicated servers on ports **8001/5174** with an isolated `e2e_finance.db` via `FINANCE_DB_PATH`; it must never reuse the dev backend on 8000. Helpers refuse to clear data unless `/api/health` reports `database: "e2e"`.
 
 ## Definition of done
 
-- ALWAYS test your changes before telling the user the work is done. Do not claim something works without verifying it.
-- Backend changes: run `pytest` and `ruff check .` (from `backend/`) and confirm both pass.
-- Frontend changes: run `npm test` and `npm run build` (from `frontend/`) and confirm both pass.
-- If a change can't be covered by existing tests, add a test or run the relevant command/flow to verify it manually, and say exactly how you verified it.
-- If verification fails or is skipped for any reason, say so explicitly instead of implying success.
+**Never mark work complete without running tests yourself.** Do not claim something works without verifying it.
+
+Run every command below that applies to your changes, then report pass/fail counts in your reply.
+
+### Backend changes (`backend/`)
+
+```powershell
+cd backend
+.venv\Scripts\activate
+pytest
+ruff check .
+```
+
+### Frontend changes (`frontend/`)
+
+```powershell
+cd frontend
+npm test
+npm run build
+```
+
+### UI / E2E / full-stack changes
+
+Also run Playwright when you changed user-facing flows, components wired to the API, or E2E config:
+
+```powershell
+cd frontend
+npm run test:e2e
+```
+
+Prerequisite (once): `npx playwright install chromium`. E2E uses ports **8001/5174** and `e2e_finance.db` only.
+
+### Cross-cutting changes
+
+If you touched **both** backend and frontend, run **all** applicable suites above (pytest, ruff, Vitest, build, and E2E when UI behavior changed).
+
+### Runnable app
+
+When changes affect startup, ports, proxy, or migrations, also verify:
+- `http://localhost:8000/api/health` responds
+- `http://localhost:5173` returns HTTP 200 (start dev servers if needed, or state that you did not verify live)
+
+### If something cannot be tested
+
+- Add or extend a test, **or** run a manual flow and describe exactly how you verified it.
+- If verification failed or was skipped, say so explicitly — never imply success.

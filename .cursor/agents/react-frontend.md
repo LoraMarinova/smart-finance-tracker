@@ -33,3 +33,22 @@ Treat that skill as the source of truth for React conventions and performance. K
 - Mirror the backend contract exactly: `type` is "income"/"expense", `amount` is a positive number; surface validation errors (HTTP 422) clearly to the user.
 - Keep it single-user and local — no auth or routing for protected areas is needed.
 - After changes, ensure the dev server builds without errors and check for linter errors.
+
+## Definition of done (required)
+
+Before telling the user frontend work is finished, **run these yourself** and report results:
+
+```powershell
+cd frontend
+npm test
+npm run build
+```
+
+If you changed UI flows, forms, filters, or anything user-visible in the browser, also run:
+
+```powershell
+cd frontend
+npm run test:e2e
+```
+
+If the change also touches the backend, the parent agent must run backend checks in `AGENTS.md`. Do not claim success without passing Vitest, build, and E2E when UI behavior changed.

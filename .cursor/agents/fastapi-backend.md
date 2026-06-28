@@ -35,3 +35,16 @@ Treat that skill as the source of truth for FastAPI conventions. Key rules from 
 - Separate concerns across `database.py`, `models.py`, `schemas.py`, and `main.py`; keep route handlers thin.
 - Use FastAPI dependency injection for DB sessions.
 - After changes, ensure the app imports and starts cleanly, and check for linter errors.
+
+## Definition of done (required)
+
+Before telling the user backend work is finished, **run these yourself** and report results:
+
+```powershell
+cd backend
+.venv\Scripts\activate
+pytest
+ruff check .
+```
+
+If the change also affects the frontend or user-visible API behavior, the parent agent must also run the frontend and E2E checks in `AGENTS.md`. Do not claim success without passing pytest and ruff.

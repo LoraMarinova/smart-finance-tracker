@@ -1,0 +1,49 @@
+---
+description: Require agents to run tests and verify changes before marking work complete
+alwaysApply: true
+---
+
+# Test before saying done
+
+Do not tell the user the work is finished until you have **run the relevant commands yourself** and confirmed they pass.
+
+## Required verification by change type
+
+**Backend** (`backend/`):
+```powershell
+cd backend
+.venv\Scripts\activate
+pytest
+ruff check .
+```
+
+**Frontend** (`frontend/`):
+```powershell
+cd frontend
+npm test
+npm run build
+```
+
+**UI / E2E / full-stack** (anything touching user flows, Playwright, or both tiers):
+```powershell
+cd frontend
+npm run test:e2e
+```
+
+**Cross-cutting changes** (touched both backend and frontend): run **all** of the above that apply.
+
+## When the app must be runnable
+
+If the change affects how the user runs or uses the app (servers, ports, proxy, migrations, startup):
+- Confirm `http://localhost:8000/api/health` responds.
+- Confirm `http://localhost:5173` loads (HTTP 200), or say explicitly if you did not start the dev servers and why.
+
+E2E tests use isolated ports **8001/5174** and `e2e_finance.db` — never the user's real `finance.db` on port 8000.
+
+## Reporting
+
+- State which commands you ran and their results (e.g. "15 passed", "6 passed").
+- If a check failed or was skipped, say so explicitly — do not imply success.
+- If you could not run a check, explain why and what the user should run.
+
+See `AGENTS.md` → **Definition of done** for the canonical project checklist.

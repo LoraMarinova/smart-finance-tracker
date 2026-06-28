@@ -174,7 +174,9 @@ cd frontend
 npm run test:e2e
 ```
 
-Playwright automatically starts the backend (on an isolated `e2e_finance.db`, so your real data is untouched) and the Vite dev server, runs the tests, then shuts them down. You do **not** need the servers running beforehand. For an interactive runner, use `npm run test:e2e:ui`.
+Playwright automatically starts **dedicated test servers** on ports **8001** (backend) and **5174** (frontend), using an isolated `e2e_finance.db` — your real `finance.db` on port 8000 is never touched. Each test run clears only the E2E database. You do **not** need (and should not rely on) your normal dev servers being up. For an interactive runner, use `npm run test:e2e:ui`.
+
+> **Important:** E2E tests delete all transactions in the test database before each test. An earlier version could accidentally reuse your dev backend on port 8000 and wipe real data; the config now uses separate ports and refuses to clear data unless the backend reports `database: "e2e"`.
 
 ## API
 

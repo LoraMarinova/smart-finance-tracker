@@ -15,7 +15,7 @@ from constants import (
     INCOME_CATEGORIES,
     MAX_PAGE_SIZE,
 )
-from database import DBDep, run_migrations
+from database import DBDep, is_e2e_database, run_migrations
 from models import RecurringTransaction, Transaction
 from models import Transaction as TxModel
 from repository import (
@@ -73,12 +73,23 @@ app = FastAPI(title="Smart Finance Tracker API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 router = APIRouter(prefix="/api", tags=["finance"])
+
+
+@router.get("/health")
+def health() -> dict[str, str]:
+    """Lightweight health check; exposes whether the isolated E2E database is in use."""
+    return {"status": "ok", "database": "e2e" if is_e2e_database() else "default"}
 
 
 @router.get("/categories", response_model=CategoriesResponse)
