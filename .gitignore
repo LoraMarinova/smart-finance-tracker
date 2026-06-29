@@ -8,6 +8,8 @@ env/
 
 # Databases
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
 finance.db
