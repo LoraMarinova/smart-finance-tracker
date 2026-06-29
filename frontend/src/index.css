@@ -30,7 +30,7 @@
   --input-bg: #ffffff;
   --error-bg: #fef2f2;
   --error-border: #fecaca;
-  --hero-gradient: linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #db2777 100%);
+  --hero-gradient: linear-gradient(135deg, #db2777 0%, #7c3aed 55%, #2563eb 100%);
   --hero-text: #ffffff;
   --hero-muted: rgba(255, 255, 255, 0.78);
   --hero-chip-bg: rgba(255, 255, 255, 0.14);
@@ -58,7 +58,7 @@
   --input-bg: #0f172a;
   --error-bg: #450a0a;
   --error-border: #7f1d1d;
-  --hero-gradient: linear-gradient(135deg, #1d4ed8 0%, #6d28d9 55%, #be185d 100%);
+  --hero-gradient: linear-gradient(135deg, #be185d 0%, #6d28d9 55%, #1d4ed8 100%);
   --hero-text: #f8fafc;
   --hero-muted: rgba(248, 250, 252, 0.75);
   --hero-chip-bg: rgba(255, 255, 255, 0.1);
@@ -71,11 +71,41 @@
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial,
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    Helvetica,
+    Arial,
     sans-serif;
   background: var(--bg);
   color: var(--text);
   line-height: 1.5;
+}
+
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: auto;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  z-index: 1200;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  color: var(--primary);
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-md);
+}
+
+.skip-link:focus {
+  left: 1rem;
+  top: 1rem;
+  width: auto;
+  height: auto;
+  overflow: visible;
 }
 
 .app {
@@ -140,16 +170,26 @@ body {
 }
 
 .summary-hero-amount {
+  align-self: flex-start;
   font-size: clamp(2rem, 5vw, 2.75rem);
   font-weight: 800;
   font-variant-numeric: tabular-nums;
   letter-spacing: -0.03em;
   line-height: 1.1;
+  margin: 0.15rem 0;
+  padding: 0.15rem 0.7rem;
+  border-radius: 14px;
+  background: rgba(15, 23, 42, 0.72);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-.summary-hero-amount.positive,
-.summary-hero-amount.negative {
-  color: var(--hero-text);
+.summary-hero-amount.amount.positive {
+  color: #4ade80;
+}
+
+.summary-hero-amount.amount.negative {
+  color: #f87171;
 }
 
 .summary-chips {
@@ -165,9 +205,9 @@ body {
   gap: 0.1rem;
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
-  background: var(--hero-chip-bg);
-  border: 1px solid var(--hero-chip-border);
-  backdrop-filter: blur(4px);
+  background: rgba(15, 23, 42, 0.72);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.2);
 }
 
 .stat-chip-label {
@@ -182,6 +222,15 @@ body {
   font-size: 1rem;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.stat-chip--income .stat-chip-value {
+  color: #4ade80;
+}
+
+.stat-chip--expense .stat-chip-value {
+  color: #f87171;
 }
 
 .summary-hero-chart {
@@ -475,12 +524,29 @@ body {
   border-radius: 8px;
   padding: 0.55rem 1rem;
   cursor: pointer;
-  transition: background-color 0.15s ease, border-color 0.15s ease;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
 }
 
 .btn:disabled {
   opacity: 0.6;
   cursor: not-allowed;
+}
+
+.btn:focus-visible,
+.toast-close:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.35);
+}
+
+.btn--primary:focus-visible {
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.45);
+}
+
+.btn--danger-solid:focus-visible,
+.btn--danger:focus-visible {
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.35);
 }
 
 .btn--primary {
@@ -974,6 +1040,15 @@ body {
 
 .toast--info {
   border-left-color: var(--primary);
+}
+
+.toast--error {
+  border-left-color: var(--danger);
+}
+
+.dashboard-error {
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .toast-close {

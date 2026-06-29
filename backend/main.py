@@ -35,7 +35,6 @@ from models import Goal, Transaction
 from models import Transaction as TxModel
 from repository import (
     _apply_transaction_filters,
-    advance_next_date,
     category_breakdown,
     compute_stats,
     contribute_to_goal,
@@ -51,6 +50,7 @@ from repository import (
     monthly_breakdown,
     post_due_for_template,
     post_due_recurring,
+    post_recurring_once,
     total_pages,
     update_goal,
     upsert_budget,
@@ -63,9 +63,6 @@ from repository import (
 )
 from repository import (
     delete_recurring as repo_delete_recurring,
-)
-from repository import (
-    get_recurring as repo_get_recurring,
 )
 from schemas import (
     AnalyticsResponse,
@@ -88,6 +85,7 @@ from schemas import (
     TransactionRead,
     TransactionsResponse,
     TransactionUpdate,
+    _validate_category_for_type,
 )
 
 logging.basicConfig(
@@ -248,6 +246,16 @@ async def validation_exception_handler(
         "Validation failed",
         field=_first_invalid_field(errors),
         details=errors,
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+    logger.exception("Unhandled error on %s %s", request.method, request.url.path)
+    return _error_response(
+        status.HTTP_500_INTERNAL_SERVER_ERROR,
+        "internal_error",
+        "An unexpected error occurred",
     )
 
 
@@ -498,9 +506,17 @@ def update_transaction(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Transaction not found"
         )
-    data = payload.model_dump()
-    if data.get("date") is None:
-        data["date"] = _default_date()
+    data = payload.model_dump(exclude_unset=True, exclude_none=True)
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No fields to update",
+        )
+    if "category" in data or "type" in data:
+        _validate_category_for_type(
+            data.get("category", transaction.category),
+            data.get("type", transaction.type),
+        )
     for field, value in data.items():
         setattr(transaction, field, value)
     db.commit()
@@ -635,24 +651,12 @@ def delete_recurring(recurring_id: RecurringIdPath, db: DBDep) -> None:
     responses={404: ERROR_RESPONSES[404]},
 )
 def post_recurring(recurring_id: RecurringIdPath, db: DBDep) -> TransactionRead:
-    recurring = repo_get_recurring(db, recurring_id)
-    if recurring is None:
+    transaction = post_recurring_once(db, recurring_id)
+    if transaction is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Recurring transaction not found",
         )
-
-    transaction = Transaction(
-        type=recurring.type,
-        amount=recurring.amount,
-        category=recurring.category,
-        description=recurring.description,
-        date=recurring.next_date,
-    )
-    db.add(transaction)
-    recurring.next_date = advance_next_date(recurring.next_date, recurring.frequency)
-    db.commit()
-    db.refresh(transaction)
     return transaction
 
 
@@ -689,7 +693,13 @@ def create_goal(payload: GoalCreate, db: DBDep) -> GoalRead:
     responses=ERROR_RESPONSES,
 )
 def edit_goal(goal_id: GoalIdPath, payload: GoalUpdate, db: DBDep) -> GoalRead:
-    goal = update_goal(db, goal_id, **payload.model_dump())
+    data = payload.model_dump(exclude_unset=True)
+    if not data:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="No fields to update",
+        )
+    goal = update_goal(db, goal_id, **data)
     if goal is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Goal not found"

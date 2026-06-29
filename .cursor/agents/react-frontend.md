@@ -22,9 +22,10 @@ Treat that skill as the source of truth for React conventions and performance. K
 
 ## Project context
 
-- Stack: React 18 + Vite, plain `fetch` for HTTP. See `AGENTS.md` and `docs/PLAN.md`.
-- Backend API at `http://localhost:8000` under `/api/transactions`; the `GET` response includes both the transaction list and stats (`total_income`, `total_expense`, `balance`).
-- Planned components: `BalanceSummary` (totals + net balance, color-coded), `TransactionForm` (add/edit), `TransactionList` (edit/delete), and an `api.js` client for the four endpoints.
+- Stack: React 18 + Vite, Recharts, plain `fetch` for HTTP (proxied to `/api`). See `AGENTS.md` and `docs/PLAN.md`.
+- Main UI: `DashboardCards`, `BalanceSummary`, `ChartsPanel`, `TransactionForm`, `FilterBar`, `TransactionList`, side panels for budgets/recurring/goals, `ConfirmDialog`, toasts, dark mode.
+- API client in `src/api.js`; validators in `src/validation.js` with Vitest coverage.
+- Refresh UI state after every create/update/delete; show field-level validation before submit and inline/toast errors on server rejection.
 
 ## Engineering rules
 

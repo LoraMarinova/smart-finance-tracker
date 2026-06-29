@@ -10,6 +10,9 @@ services:
     build: ./frontend
     ports:
       - "5173:5173"
+    environment:
+      # Vite runs inside this container; localhost:8000 is not the backend service.
+      API_PROXY_TARGET: http://backend:8000
     volumes:
       - ./frontend:/app
       - /app/node_modules

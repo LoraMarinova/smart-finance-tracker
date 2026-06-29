@@ -4,7 +4,9 @@
 async function assertE2eDatabase(request) {
   const res = await request.get('/api/health')
   if (!res.ok()) {
-    throw new Error(`Health check failed (${res.status()}). Is the E2E backend running?`)
+    throw new Error(
+      `Health check failed (${res.status()}). Is the E2E backend running?`,
+    )
   }
   const body = await res.json()
   if (body.database !== 'e2e') {

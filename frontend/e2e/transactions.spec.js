@@ -8,7 +8,9 @@ test.beforeEach(async ({ request }) => {
 test('shows the app shell and empty state with no transactions', async ({ page }) => {
   await page.goto('/')
 
-  await expect(page.getByRole('heading', { name: 'Smart Finance Tracker' })).toBeVisible()
+  await expect(
+    page.getByRole('heading', { name: 'Smart Finance Tracker' }),
+  ).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Filter & Search' })).toBeVisible()
   await expect(page.getByText('No transactions match your filters.')).toBeVisible()
 })
@@ -38,7 +40,9 @@ test('client-side validation blocks an empty amount', async ({ page }) => {
   await form.locator('select[name="category"]').selectOption('Groceries')
   await form.getByRole('button', { name: 'Add Transaction' }).click()
 
-  await expect(form.locator('.field-error', { hasText: 'Enter an amount.' })).toBeVisible()
+  await expect(
+    form.locator('.field-error', { hasText: 'Enter an amount.' }),
+  ).toBeVisible()
   await expect(page.getByText('No transactions match your filters.')).toBeVisible()
 })
 

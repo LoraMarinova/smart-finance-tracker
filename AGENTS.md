@@ -23,14 +23,17 @@ Smart Finance Tracker — a local-only, three-tier personal finance app for logg
 
 Base path `/api`. Key endpoints:
 
+- `GET /health` — app and database status
+- `GET /dashboard` — monthly KPIs (savings rate, budget health, top category)
 - `GET /transactions` — paginated list + filtered stats (`total_income`, `total_expense`, `balance`)
 - `GET /transactions/export` — CSV with same query filters
 - `GET /analytics` — category and monthly breakdowns
 - `GET /categories` — predefined category lists
 - `GET/PUT/DELETE /budgets` — category spending limits
 - `GET/POST/DELETE /recurring`, `POST /recurring/{id}/post` — recurring templates
+- `GET/POST/PUT/DELETE /goals`, `POST /goals/{id}/contribute` — savings goals
 
-`POST`/`PUT` validate input; `PUT`/`DELETE` return 404 for unknown IDs.
+`POST`/`PUT` validate input; `PUT`/`DELETE` return 404 for unknown IDs. Errors use `{ "error": { "code", "message", "field", "details" } }`.
 
 ## Conventions
 

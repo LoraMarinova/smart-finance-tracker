@@ -110,16 +110,13 @@ function TransactionForm({
 
         <label className="field">
           <span>Date</span>
-          <input
-            type="date"
-            name="date"
-            value={values.date}
-            onChange={handleChange}
-          />
+          <input type="date" name="date" value={values.date} onChange={handleChange} />
         </label>
 
         <label className="field field--wide">
-          <span>Description <em>(optional)</em></span>
+          <span>
+            Description <em>(optional)</em>
+          </span>
           <input
             type="text"
             name="description"
@@ -130,7 +127,11 @@ function TransactionForm({
         </label>
       </div>
 
-      {serverError ? <p className="form-error" role="alert">{serverError}</p> : null}
+      {serverError ? (
+        <p className="form-error" role="alert">
+          {serverError}
+        </p>
+      ) : null}
 
       <div className="form-actions">
         <button type="submit" className="btn btn--primary" disabled={submitting}>

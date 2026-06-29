@@ -37,11 +37,21 @@ function CardIcon({ children }) {
   )
 }
 
-function DashboardCards({ data, loading }) {
+function DashboardCards({ data, loading, error }) {
   if (loading) {
     return (
       <section className="dashboard" aria-label="Dashboard">
         <CardSkeleton count={4} />
+      </section>
+    )
+  }
+
+  if (error) {
+    return (
+      <section className="dashboard" aria-label="Dashboard">
+        <p className="form-error dashboard-error" role="alert">
+          {error}
+        </p>
       </section>
     )
   }
@@ -68,7 +78,9 @@ function DashboardCards({ data, loading }) {
           </CardIcon>
           <span className="summary-label">This month net</span>
         </div>
-        <span className={Number(data.balance) >= 0 ? 'amount positive' : 'amount negative'}>
+        <span
+          className={Number(data.balance) >= 0 ? 'amount positive' : 'amount negative'}
+        >
           {currency.format(Number(data.balance))}
         </span>
         <span className="dashboard-meta">
@@ -86,7 +98,11 @@ function DashboardCards({ data, loading }) {
                 strokeWidth="2"
                 strokeLinejoin="round"
               />
-              <path d="M3 6h18M16 10a4 4 0 0 1-8 0" stroke="currentColor" strokeWidth="2" />
+              <path
+                d="M3 6h18M16 10a4 4 0 0 1-8 0"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
             </svg>
           </CardIcon>
           <span className="summary-label">Spent this month</span>

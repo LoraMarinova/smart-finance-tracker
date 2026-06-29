@@ -22,11 +22,10 @@ Treat that skill as the source of truth for FastAPI conventions. Key rules from 
 
 ## Project context
 
-- Stack: FastAPI + Uvicorn, SQLAlchemy ORM, Pydantic v2, SQLite file `finance.db` (tables auto-created on startup, no migration tool). See `AGENTS.md` and `docs/PLAN.md`.
+- Stack: FastAPI + Uvicorn, SQLAlchemy ORM, Pydantic v2, Alembic migrations on startup, SQLite (`finance.db`). See `AGENTS.md` and `docs/PLAN.md`.
 - Core entity `Transaction`: `id`, `type` ("income" | "expense"), `amount`, `category`, `description` (optional), `date`.
-- Endpoints under `/api/transactions`:
-  - `GET` returns the transaction list plus computed stats (`total_income`, `total_expense`, `balance`).
-  - `POST` / `PUT` validate input; `PUT` / `DELETE` return 404 for unknown IDs.
+- Also: budgets, recurring templates (auto-posted when due), savings goals, dashboard KPIs, CSV export.
+- Endpoints under `/api` include `/health`, `/dashboard`, `/transactions`, `/analytics`, `/categories`, `/budgets`, `/recurring`, `/goals`.
 
 ## Engineering rules
 

@@ -24,9 +24,8 @@ function FilterBar({ filters, categories, onChange, onExport, exporting }) {
     <section className="filters" aria-label="Transaction filters">
       <h2 className="section-title">Filter &amp; Search</h2>
       <p className="panel-hint">
-        Narrow the transaction list and analytics below by type, category, date
-        range, or text. Export CSV downloads exactly what your current filters
-        show.
+        Narrow the transaction list and analytics below by type, category, date range,
+        or text. Export CSV downloads exactly what your current filters show.
       </p>
 
       <div className="filter-presets" role="group" aria-label="Date range presets">
@@ -66,12 +65,7 @@ function FilterBar({ filters, categories, onChange, onExport, exporting }) {
 
         <label className="field">
           <span>From</span>
-          <input
-            type="date"
-            name="from"
-            value={filters.from}
-            onChange={handleChange}
-          />
+          <input type="date" name="from" value={filters.from} onChange={handleChange} />
         </label>
 
         <label className="field">

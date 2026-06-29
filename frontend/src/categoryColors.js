@@ -36,7 +36,10 @@ const KNOWN_CATEGORIES = [
 
 /** @type {Map<string, string>} */
 const colorByCategory = new Map(
-  KNOWN_CATEGORIES.map((name, index) => [name, CATEGORY_PALETTE[index % CATEGORY_PALETTE.length]]),
+  KNOWN_CATEGORIES.map((name, index) => [
+    name,
+    CATEGORY_PALETTE[index % CATEGORY_PALETTE.length],
+  ]),
 )
 
 /**

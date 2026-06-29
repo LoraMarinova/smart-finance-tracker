@@ -25,7 +25,12 @@ export function ToastProvider({ children }) {
       {children}
       <div className="toast-stack" aria-live="polite">
         {toasts.map((toast) => (
-          <div key={toast.id} className={`toast toast--${toast.variant}`}>
+          <div
+            key={toast.id}
+            className={`toast toast--${toast.variant}`}
+            role={toast.variant === 'error' ? 'alert' : 'status'}
+            aria-live={toast.variant === 'error' ? 'assertive' : 'polite'}
+          >
             {toast.message}
             <button
               type="button"

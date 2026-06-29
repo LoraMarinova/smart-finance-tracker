@@ -29,13 +29,13 @@ function ChartsPanel({ analytics, loading }) {
 
   if (!analytics) return null
 
-  const monthly = analytics.by_month.map((row) => ({
+  const monthly = (analytics.by_month ?? []).map((row) => ({
     month: row.month,
     income: Number(row.income),
     expense: Number(row.expense),
   }))
 
-  const byCategory = analytics.by_category.map((row) => ({
+  const byCategory = (analytics.by_category ?? []).map((row) => ({
     name: row.category,
     value: Number(row.total),
   }))
@@ -59,8 +59,18 @@ function ChartsPanel({ analytics, loading }) {
               <XAxis dataKey="month" tick={{ fill: 'var(--muted)', fontSize: 12 }} />
               <YAxis tick={{ fill: 'var(--muted)', fontSize: 12 }} />
               <Tooltip formatter={(value) => currency.format(value)} />
-              <Bar dataKey="income" fill="var(--positive)" name="Income" radius={[4, 4, 0, 0]} />
-              <Bar dataKey="expense" fill="var(--negative)" name="Expense" radius={[4, 4, 0, 0]} />
+              <Bar
+                dataKey="income"
+                fill="var(--positive)"
+                name="Income"
+                radius={[4, 4, 0, 0]}
+              />
+              <Bar
+                dataKey="expense"
+                fill="var(--negative)"
+                name="Expense"
+                radius={[4, 4, 0, 0]}
+              />
             </BarChart>
           </ResponsiveContainer>
         </div>

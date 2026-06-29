@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from alembic import command
@@ -26,6 +26,15 @@ def is_e2e_database() -> bool:
 
 
 engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+
+
+@event.listens_for(engine, "connect")
+def _set_sqlite_pragma(dbapi_connection, connection_record) -> None:
+    """Enable WAL mode for better concurrent read/write with the background poller."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode=WAL")
+    cursor.close()
+
 
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False)
 
@@ -57,6 +66,9 @@ def get_db() -> Generator[Session, None, None]:
     db = SessionLocal()
     try:
         yield db
+    except Exception:
+        db.rollback()
+        raise
     finally:
         db.close()
 

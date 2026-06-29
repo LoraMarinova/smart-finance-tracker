@@ -11,6 +11,24 @@ from constants import DEFAULT_PAGE_SIZE, MAX_PAGE_SIZE
 from models import Budget, Goal, RecurringTransaction, Transaction
 from schemas import DashboardResponse, MonthComparison, Stats
 
+_LIKE_ESCAPE = "\\"
+
+
+def _escape_like(value: str) -> str:
+    """Escape SQL LIKE wildcards so search matches the literal text."""
+    return (
+        value.replace(_LIKE_ESCAPE, _LIKE_ESCAPE + _LIKE_ESCAPE)
+        .replace("%", _LIKE_ESCAPE + "%")
+        .replace("_", _LIKE_ESCAPE + "_")
+    )
+
+
+def _csv_safe(value: str) -> str:
+    """Prefix spreadsheet formula triggers so exports open safely in Excel."""
+    if value and value[0] in ("=", "+", "-", "@", "\t", "\r"):
+        return f"'{value}"
+    return value
+
 
 def _apply_transaction_filters(
     stmt: Select,
@@ -30,11 +48,11 @@ def _apply_transaction_filters(
     if date_to is not None:
         stmt = stmt.where(Transaction.date <= date_to)
     if search:
-        pattern = f"%{search.strip()}%"
+        pattern = f"%{_escape_like(search.strip())}%"
         stmt = stmt.where(
             or_(
-                Transaction.category.ilike(pattern),
-                Transaction.description.ilike(pattern),
+                Transaction.category.ilike(pattern, escape=_LIKE_ESCAPE),
+                Transaction.description.ilike(pattern, escape=_LIKE_ESCAPE),
             )
         )
     return stmt
@@ -188,7 +206,7 @@ def export_transactions_csv(
                 tx.type,
                 str(tx.amount),
                 tx.category,
-                tx.description or "",
+                _csv_safe(tx.description or ""),
                 tx.date.isoformat(),
             ]
         )
@@ -331,6 +349,25 @@ def post_due_for_template(
     if posted:
         db.commit()
     return posted
+
+
+def post_recurring_once(db: Session, recurring_id: int) -> Transaction | None:
+    """Post one occurrence now, even when next_date is still in the future."""
+    template = db.get(RecurringTransaction, recurring_id)
+    if template is None:
+        return None
+    transaction = Transaction(
+        type=template.type,
+        amount=template.amount,
+        category=template.category,
+        description=template.description,
+        date=template.next_date,
+    )
+    db.add(transaction)
+    template.next_date = advance_next_date(template.next_date, template.frequency)
+    db.commit()
+    db.refresh(transaction)
+    return transaction
 
 
 def _month_bounds(moment: datetime) -> tuple[datetime, datetime]:

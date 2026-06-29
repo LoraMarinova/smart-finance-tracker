@@ -45,8 +45,9 @@ def client(db_session: Session) -> Generator[TestClient, None, None]:
     def override_get_db() -> Generator[Session, None, None]:
         try:
             yield db_session
-        finally:
-            pass
+        except Exception:
+            db_session.rollback()
+            raise
 
     app.dependency_overrides[get_db] = override_get_db
     with TestClient(app) as test_client:

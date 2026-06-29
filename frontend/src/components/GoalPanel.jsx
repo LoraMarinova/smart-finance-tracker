@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { validateGoal } from '../validation.js'
+import { validateGoal, validateGoalContribution } from '../validation.js'
 import { ListSkeleton } from './Skeleton.jsx'
 
 const currency = new Intl.NumberFormat(undefined, {
@@ -15,12 +15,19 @@ function GoalPanel({
   busyId,
   busy,
   loading = false,
+  actionError = null,
+  onClearActionError,
 }) {
   const [name, setName] = useState('')
   const [target, setTarget] = useState('')
   const [errors, setErrors] = useState({})
   const [touched, setTouched] = useState(false)
+  const [serverError, setServerError] = useState('')
   const [contributions, setContributions] = useState({})
+  const [contributionErrors, setContributionErrors] = useState({})
+  const [contributionTouched, setContributionTouched] = useState({})
+
+  const panelError = serverError || actionError
 
   function runValidation(next) {
     const result = validateGoal(next)
@@ -28,23 +35,43 @@ function GoalPanel({
     return result
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
     setTouched(true)
     const validationErrors = runValidation({ name, target })
     if (Object.keys(validationErrors).length > 0) return
-    onCreate({ name: name.trim(), target_amount: Number(target) })
-    setName('')
-    setTarget('')
-    setErrors({})
-    setTouched(false)
+    setServerError('')
+    onClearActionError?.()
+    try {
+      await onCreate({ name: name.trim(), target_amount: Number(target) })
+      setName('')
+      setTarget('')
+      setErrors({})
+      setTouched(false)
+    } catch (err) {
+      setServerError(err.message)
+    }
   }
 
-  function handleContribute(id) {
-    const amount = Number(contributions[id])
-    if (!amount || amount <= 0) return
-    onContribute(id, amount)
-    setContributions((curr) => ({ ...curr, [id]: '' }))
+  async function handleContribute(id) {
+    setContributionTouched((curr) => ({ ...curr, [id]: true }))
+    const raw = contributions[id]
+    const validationErrors = validateGoalContribution(raw)
+    if (Object.keys(validationErrors).length > 0) {
+      setContributionErrors((curr) => ({
+        ...curr,
+        [id]: validationErrors.amount,
+      }))
+      return
+    }
+    try {
+      await onContribute(id, Number(raw))
+      setContributions((curr) => ({ ...curr, [id]: '' }))
+      setContributionErrors((curr) => ({ ...curr, [id]: undefined }))
+      setContributionTouched((curr) => ({ ...curr, [id]: false }))
+    } catch (err) {
+      setContributionErrors((curr) => ({ ...curr, [id]: err.message }))
+    }
   }
 
   return (
@@ -53,6 +80,12 @@ function GoalPanel({
       <p className="panel-hint">
         Set a target and track contributions toward each goal.
       </p>
+
+      {panelError ? (
+        <p className="form-error" role="alert">
+          {panelError}
+        </p>
+      ) : null}
 
       <form className="goal-form" onSubmit={handleSubmit} noValidate>
         <label className="field">
@@ -63,6 +96,8 @@ function GoalPanel({
             onChange={(e) => {
               setName(e.target.value)
               if (touched) runValidation({ name: e.target.value, target })
+              if (serverError) setServerError('')
+              onClearActionError?.()
             }}
             placeholder="Emergency fund"
             aria-invalid={touched && Boolean(errors.name)}
@@ -81,6 +116,8 @@ function GoalPanel({
             onChange={(e) => {
               setTarget(e.target.value)
               if (touched) runValidation({ name, target: e.target.value })
+              if (serverError) setServerError('')
+              onClearActionError?.()
             }}
             placeholder="0.00"
             aria-invalid={touched && Boolean(errors.target)}
@@ -119,20 +156,38 @@ function GoalPanel({
                   />
                 </div>
                 <div className="goal-actions">
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    className="goal-contribute-input"
-                    placeholder="Amount"
-                    value={contributions[goal.id] ?? ''}
-                    onChange={(e) =>
-                      setContributions((curr) => ({
-                        ...curr,
-                        [goal.id]: e.target.value,
-                      }))
-                    }
-                  />
+                  <label className="field goal-contribute-field">
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      className="goal-contribute-input"
+                      placeholder="Amount"
+                      aria-label="Contribution amount"
+                      value={contributions[goal.id] ?? ''}
+                      aria-invalid={
+                        contributionTouched[goal.id] &&
+                        Boolean(contributionErrors[goal.id])
+                      }
+                      onChange={(e) => {
+                        const value = e.target.value
+                        setContributions((curr) => ({
+                          ...curr,
+                          [goal.id]: value,
+                        }))
+                        if (contributionTouched[goal.id]) {
+                          const nextErrors = validateGoalContribution(value)
+                          setContributionErrors((curr) => ({
+                            ...curr,
+                            [goal.id]: nextErrors.amount,
+                          }))
+                        }
+                      }}
+                    />
+                    {contributionTouched[goal.id] && contributionErrors[goal.id] ? (
+                      <span className="field-error">{contributionErrors[goal.id]}</span>
+                    ) : null}
+                  </label>
                   <button
                     type="button"
                     className="btn btn--small btn--primary"

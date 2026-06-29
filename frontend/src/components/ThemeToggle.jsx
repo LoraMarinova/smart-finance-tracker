@@ -2,8 +2,24 @@ import { useEffect, useState } from 'react'
 
 const STORAGE_KEY = 'sft-theme'
 
+function readStoredTheme() {
+  try {
+    return localStorage.getItem(STORAGE_KEY) || 'light'
+  } catch {
+    return 'light'
+  }
+}
+
+function persistTheme(theme) {
+  try {
+    localStorage.setItem(STORAGE_KEY, theme)
+  } catch {
+    // Private browsing or disabled storage — theme still applies for this session.
+  }
+}
+
 export function initTheme() {
-  const stored = localStorage.getItem(STORAGE_KEY) || 'light'
+  const stored = readStoredTheme()
   document.documentElement.dataset.theme = stored
   return stored
 }
@@ -17,7 +33,7 @@ function ThemeToggle() {
 
   useEffect(() => {
     document.documentElement.dataset.theme = theme
-    localStorage.setItem(STORAGE_KEY, theme)
+    persistTheme(theme)
   }, [theme])
 
   const label = theme === 'dark' ? 'Light mode' : 'Dark mode'

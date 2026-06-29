@@ -34,11 +34,6 @@ describe('presetRange', () => {
   })
 
   it('exposes selectable presets', () => {
-    expect(DATE_PRESETS.map((p) => p.id)).toEqual([
-      'month',
-      '30days',
-      'year',
-      'all',
-    ])
+    expect(DATE_PRESETS.map((p) => p.id)).toEqual(['month', '30days', 'year', 'all'])
   })
 })

@@ -5,9 +5,16 @@ test.beforeEach(async ({ request }) => {
   await clearAll(request)
 })
 
-test('balance summary reflects seeded income and expenses', async ({ page, request }) => {
+test('balance summary reflects seeded income and expenses', async ({
+  page,
+  request,
+}) => {
   await createTransaction(request, { type: 'income', amount: 500, category: 'Salary' })
-  await createTransaction(request, { type: 'expense', amount: 125, category: 'Groceries' })
+  await createTransaction(request, {
+    type: 'expense',
+    amount: 125,
+    category: 'Groceries',
+  })
 
   await page.goto('/')
 
@@ -71,7 +78,10 @@ test('export CSV shows a success toast', async ({ page, request }) => {
   await createTransaction(request, { type: 'income', amount: 75, category: 'Salary' })
 
   await page.goto('/')
-  await page.locator('section.filters').getByRole('button', { name: 'Export CSV' }).click()
+  await page
+    .locator('section.filters')
+    .getByRole('button', { name: 'Export CSV' })
+    .click()
   await expect(page.getByText('CSV exported.')).toBeVisible()
 })
 
@@ -111,8 +121,49 @@ test('analytics charts appear when expense data exists', async ({ page, request 
   await expect(page.getByText('Monthly income vs expense')).toBeVisible()
 })
 
+test('budget form shows validation errors for missing fields', async ({ page }) => {
+  await page.goto('/')
+
+  const budgets = page.getByLabel('Budgets')
+  await budgets.getByRole('button', { name: 'Set budget' }).click()
+
+  await expect(budgets.getByText('Category is required.')).toBeVisible()
+  await expect(budgets.getByText('Enter a limit.')).toBeVisible()
+  await expect(page.getByText('No budgets set yet.')).toBeVisible()
+})
+
+test('budget save API error appears in the budget panel', async ({ page }) => {
+  await page.route('**/api/budgets', async (route) => {
+    if (route.request().method() === 'PUT') {
+      await route.fulfill({
+        status: 500,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          error: { code: 'internal_error', message: 'Could not save budget.' },
+        }),
+      })
+      return
+    }
+    await route.continue()
+  })
+
+  await page.goto('/')
+
+  const budgets = page.getByLabel('Budgets')
+  await budgets.locator('select[name="category"]').selectOption('Groceries')
+  await budgets.locator('input[name="amount"]').fill('100')
+  await budgets.getByRole('button', { name: 'Set budget' }).click()
+
+  await expect(budgets.getByText('Could not save budget.')).toBeVisible()
+  await expect(page.locator('.error-state')).toHaveCount(0)
+})
+
 test('setting a budget shows progress for that category', async ({ page, request }) => {
-  await createTransaction(request, { type: 'expense', amount: 40, category: 'Groceries' })
+  await createTransaction(request, {
+    type: 'expense',
+    amount: 40,
+    category: 'Groceries',
+  })
 
   await page.goto('/')
   const budgets = page.getByLabel('Budgets')
@@ -212,6 +263,27 @@ test('side panels show friendly empty states when there is no data', async ({
   await expect(page.getByText('No savings goals yet.')).toBeVisible()
 })
 
+test('goal contribution shows validation error for negative amount', async ({
+  page,
+}) => {
+  await page.goto('/')
+
+  const goals = page.getByLabel('Savings goals')
+  const form = goals.locator('form.goal-form')
+  await form.locator('input[type="text"]').fill('Vacation')
+  await form.locator('input[type="number"]').fill('1000')
+  await form.getByRole('button', { name: 'Add goal' }).click()
+
+  await expect(page.getByText('Goal added.')).toBeVisible()
+
+  const item = goals.locator('.goal-item')
+  await item.locator('.goal-contribute-input').fill('-50')
+  await item.getByRole('button', { name: 'Contribute' }).click()
+
+  await expect(item.getByText('Amount must be greater than 0.')).toBeVisible()
+  await expect(page.getByText('Contribution added.')).toHaveCount(0)
+})
+
 test('goal form shows validation errors for missing fields', async ({ page }) => {
   await page.goto('/')
 
@@ -222,6 +294,22 @@ test('goal form shows validation errors for missing fields', async ({ page }) =>
   await expect(goals.getByText('Name is required.')).toBeVisible()
   await expect(goals.getByText('Enter a target amount.')).toBeVisible()
   await expect(goals.getByText('No savings goals yet.')).toBeVisible()
+})
+
+test('recurring form shows validation error when category is missing', async ({
+  page,
+}) => {
+  await page.goto('/')
+
+  const recurring = page.getByLabel('Recurring transactions')
+  const form = recurring.locator('form.recurring-form')
+  await form.locator('input[name="amount"]').fill('500')
+  await form.locator('input[name="next_date"]').fill('2026-12-01')
+  await form.getByRole('button', { name: 'Add recurring' }).click()
+
+  await expect(recurring.getByText('Category is required.')).toBeVisible()
+  await expect(page.getByText('Recurring template added.')).toHaveCount(0)
+  await expect(page.getByText('No recurring templates yet.')).toBeVisible()
 })
 
 test('a due recurring template auto-posts on creation', async ({ page }) => {

@@ -74,8 +74,7 @@ async function request(url, options) {
     if (body && typeof body === 'object') {
       if (body.error && typeof body.error === 'object') {
         detail = body.error.details ?? null
-        message =
-          body.error.message || formatValidationDetail(detail)
+        message = body.error.message || formatValidationDetail(detail)
       } else {
         detail = body.detail
         message = formatValidationDetail(detail)

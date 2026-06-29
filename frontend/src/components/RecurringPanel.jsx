@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { validateRecurring } from '../validation.js'
 import { ListSkeleton } from './Skeleton.jsx'
 
 const currency = new Intl.NumberFormat(undefined, {
@@ -21,6 +22,8 @@ function RecurringPanel({
   onPost,
   busyId,
   loading = false,
+  actionError = null,
+  onClearActionError,
 }) {
   const [values, setValues] = useState({
     type: 'expense',
@@ -30,36 +33,56 @@ function RecurringPanel({
     frequency: 'monthly',
     next_date: '',
   })
+  const [errors, setErrors] = useState({})
+  const [touched, setTouched] = useState(false)
+  const [serverError, setServerError] = useState('')
 
   const categoryOptions =
     values.type === 'income' ? categories.income : categories.expense
 
   function handleChange(event) {
     const { name, value } = event.target
-    setValues((curr) => ({
-      ...curr,
+    const next = {
+      ...values,
       [name]: value,
       ...(name === 'type' ? { category: '' } : {}),
-    }))
+    }
+    setValues(next)
+    if (touched) setErrors(validateRecurring(next, categories))
+    if (serverError) setServerError('')
+    onClearActionError?.()
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
-    if (!values.category || !values.amount || !values.next_date) return
-    onCreate({
-      type: values.type,
-      amount: Number(values.amount),
-      category: values.category,
-      description: values.description.trim() || null,
-      frequency: values.frequency,
-      next_date: values.next_date,
-    })
-    setValues((curr) => ({
-      ...curr,
-      amount: '',
-      description: '',
-    }))
+    setTouched(true)
+    const validationErrors = validateRecurring(values, categories)
+    setErrors(validationErrors)
+    setServerError('')
+    if (Object.keys(validationErrors).length > 0) return
+
+    try {
+      await onCreate({
+        type: values.type,
+        amount: Number(values.amount),
+        category: values.category,
+        description: values.description.trim() || null,
+        frequency: values.frequency,
+        next_date: values.next_date,
+      })
+      setValues((curr) => ({
+        ...curr,
+        amount: '',
+        description: '',
+      }))
+      setErrors({})
+      setTouched(false)
+    } catch (err) {
+      setServerError(err.message)
+    }
   }
+
+  const panelError = serverError || actionError
 
   return (
     <section className="panel" aria-label="Recurring transactions">
@@ -68,7 +91,13 @@ function RecurringPanel({
         Save repeating entries and post them when due — no background scheduler needed.
       </p>
 
-      <form className="recurring-form" onSubmit={handleSubmit}>
+      {panelError ? (
+        <p className="form-error" role="alert">
+          {panelError}
+        </p>
+      ) : null}
+
+      <form className="recurring-form" onSubmit={handleSubmit} noValidate>
         <label className="field">
           <span>Type</span>
           <select name="type" value={values.type} onChange={handleChange}>
@@ -85,11 +114,20 @@ function RecurringPanel({
             step="0.01"
             value={values.amount}
             onChange={handleChange}
+            aria-invalid={touched && Boolean(errors.amount)}
           />
+          {touched && errors.amount ? (
+            <span className="field-error">{errors.amount}</span>
+          ) : null}
         </label>
         <label className="field">
           <span>Category</span>
-          <select name="category" value={values.category} onChange={handleChange}>
+          <select
+            name="category"
+            value={values.category}
+            onChange={handleChange}
+            aria-invalid={touched && Boolean(errors.category)}
+          >
             <option value="">Select…</option>
             {categoryOptions.map((cat) => (
               <option key={cat} value={cat}>
@@ -97,13 +135,24 @@ function RecurringPanel({
               </option>
             ))}
           </select>
+          {touched && errors.category ? (
+            <span className="field-error">{errors.category}</span>
+          ) : null}
         </label>
         <label className="field">
           <span>Frequency</span>
-          <select name="frequency" value={values.frequency} onChange={handleChange}>
+          <select
+            name="frequency"
+            value={values.frequency}
+            onChange={handleChange}
+            aria-invalid={touched && Boolean(errors.frequency)}
+          >
             <option value="weekly">Weekly</option>
             <option value="monthly">Monthly</option>
           </select>
+          {touched && errors.frequency ? (
+            <span className="field-error">{errors.frequency}</span>
+          ) : null}
         </label>
         <label className="field">
           <span>Next date</span>
@@ -112,7 +161,11 @@ function RecurringPanel({
             name="next_date"
             value={values.next_date}
             onChange={handleChange}
+            aria-invalid={touched && Boolean(errors.next_date)}
           />
+          {touched && errors.next_date ? (
+            <span className="field-error">{errors.next_date}</span>
+          ) : null}
         </label>
         <label className="field field--wide">
           <span>Description</span>

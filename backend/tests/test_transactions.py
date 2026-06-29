@@ -59,7 +59,59 @@ def test_update_transaction(client):
         json={"type": "expense", "amount": 30, "category": "Groceries"},
     )
     assert update_res.status_code == 200
-    assert float(update_res.json()["amount"]) == 30
+    updated = update_res.json()
+    assert float(updated["amount"]) == 30
+    assert updated["date"] == create_res.json()["date"]
+
+
+def test_transaction_put_omitted_date_not_reset_to_now(client):
+    """PUT must not call _default_date() when date is omitted from the body."""
+    original_date = "2026-01-15T09:00:00"
+    create_res = client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": "25",
+            "category": "Groceries",
+            "date": original_date,
+        },
+    )
+    tx_id = create_res.json()["id"]
+    assert create_res.json()["date"].startswith("2026-01-15")
+
+    update_res = client.put(
+        f"/api/transactions/{tx_id}",
+        json={"type": "expense", "amount": "30", "category": "Groceries"},
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["date"] == create_res.json()["date"]
+    assert update_res.json()["date"].startswith("2026-01-15")
+
+
+def test_transaction_put_explicit_null_date_preserves_existing(client):
+    create_res = client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": "25",
+            "category": "Groceries",
+            "date": "2026-01-15T09:00:00",
+        },
+    )
+    tx_id = create_res.json()["id"]
+    original_date = create_res.json()["date"]
+
+    update_res = client.put(
+        f"/api/transactions/{tx_id}",
+        json={
+            "type": "expense",
+            "amount": "30",
+            "category": "Groceries",
+            "date": None,
+        },
+    )
+    assert update_res.status_code == 200
+    assert update_res.json()["date"] == original_date
 
 
 def test_update_missing_transaction(client):
@@ -68,6 +120,56 @@ def test_update_missing_transaction(client):
         json={"type": "expense", "amount": 10, "category": "Groceries"},
     )
     assert res.status_code == 404
+
+
+def test_transaction_partial_put_preserves_unset_fields(client):
+    create_res = client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": "25",
+            "category": "Groceries",
+            "description": "Weekly shop",
+            "date": "2026-01-15T09:00:00",
+        },
+    )
+    tx_id = create_res.json()["id"]
+    original = create_res.json()
+
+    update_res = client.put(
+        f"/api/transactions/{tx_id}",
+        json={"amount": "30"},
+    )
+    assert update_res.status_code == 200
+    updated = update_res.json()
+    assert float(updated["amount"]) == 30
+    assert updated["type"] == original["type"]
+    assert updated["category"] == original["category"]
+    assert updated["description"] == original["description"]
+    assert updated["date"] == original["date"]
+
+
+def test_goal_partial_put_preserves_current_amount(client):
+    create_res = client.post(
+        "/api/goals",
+        json={"name": "Emergency fund", "target_amount": 1000},
+    )
+    goal_id = create_res.json()["id"]
+
+    contribute_res = client.post(
+        f"/api/goals/{goal_id}/contribute", json={"amount": 250}
+    )
+    assert contribute_res.status_code == 200
+
+    update_res = client.put(
+        f"/api/goals/{goal_id}",
+        json={"name": "Rainy day", "target_amount": 2000},
+    )
+    assert update_res.status_code == 200
+    updated = update_res.json()
+    assert updated["name"] == "Rainy day"
+    assert float(updated["target_amount"]) == 2000
+    assert float(updated["current_amount"]) == 250
 
 
 def test_delete_transaction(client):
@@ -155,6 +257,30 @@ def test_search_transactions(client):
     assert res.json()["total"] == 1
 
 
+def test_search_treats_underscore_as_literal(client):
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 10,
+            "category": "Other Expense",
+            "description": "fixed_value",
+        },
+    )
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 11,
+            "category": "Other Expense",
+            "description": "fixed1value",
+        },
+    )
+
+    res = client.get("/api/transactions", params={"search": "fixed_value"})
+    assert res.json()["total"] == 1
+
+
 def test_export_csv(client):
     client.post(
         "/api/transactions",
@@ -164,6 +290,21 @@ def test_export_csv(client):
     assert res.status_code == 200
     assert "text/csv" in res.headers["content-type"]
     assert "Salary" in res.text
+
+
+def test_export_csv_formula_injection(client):
+    client.post(
+        "/api/transactions",
+        json={
+            "type": "expense",
+            "amount": 1,
+            "category": "Other Expense",
+            "description": "=2+2",
+        },
+    )
+    res = client.get("/api/transactions/export")
+    assert res.status_code == 200
+    assert "'=2+2" in res.text
 
 
 def test_analytics(client):

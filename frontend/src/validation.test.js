@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest'
-import { EMPTY_FORM, toFormState, validate, validateGoal } from './validation.js'
+import {
+  EMPTY_FORM,
+  toFormState,
+  validate,
+  validateBudget,
+  validateGoal,
+  validateGoalContribution,
+  validateRecurring,
+} from './validation.js'
 
 const categories = {
   income: ['Salary', 'Freelance'],
@@ -95,6 +103,31 @@ describe('validate', () => {
   })
 })
 
+describe('validateBudget', () => {
+  it('accepts a valid budget', () => {
+    expect(
+      validateBudget({ category: 'Groceries', amount: '200' }, categories),
+    ).toEqual({})
+  })
+
+  it('requires a category', () => {
+    expect(validateBudget({ category: '', amount: '200' }, categories).category).toBe(
+      'Category is required.',
+    )
+  })
+
+  it('requires a limit', () => {
+    const errors = validateBudget({ category: 'Groceries', amount: '' }, categories)
+    expect(errors.amount).toBe('Enter a limit.')
+  })
+
+  it('rejects a non-positive limit', () => {
+    expect(
+      validateBudget({ category: 'Groceries', amount: '0' }, categories).amount,
+    ).toBe('Limit must be greater than 0.')
+  })
+})
+
 describe('validateGoal', () => {
   it('accepts a valid goal', () => {
     expect(validateGoal({ name: 'Car', target: '5000' })).toEqual({})
@@ -119,5 +152,68 @@ describe('validateGoal', () => {
     const errors = validateGoal({ name: '', target: '' })
     expect(errors.name).toBeTruthy()
     expect(errors.target).toBeTruthy()
+  })
+})
+
+describe('validateGoalContribution', () => {
+  it('accepts a positive amount', () => {
+    expect(validateGoalContribution('25')).toEqual({})
+  })
+
+  it('requires an amount', () => {
+    expect(validateGoalContribution('').amount).toBe('Enter an amount.')
+  })
+
+  it('rejects a non-positive amount', () => {
+    expect(validateGoalContribution('-10').amount).toBe(
+      'Amount must be greater than 0.',
+    )
+    expect(validateGoalContribution('0').amount).toBe('Amount must be greater than 0.')
+  })
+})
+
+describe('validateRecurring', () => {
+  it('accepts a valid recurring template', () => {
+    expect(
+      validateRecurring(
+        {
+          type: 'expense',
+          amount: '500',
+          category: 'Rent',
+          frequency: 'monthly',
+          next_date: '2026-07-01',
+        },
+        categories,
+      ),
+    ).toEqual({})
+  })
+
+  it('requires a category', () => {
+    const errors = validateRecurring(
+      {
+        type: 'expense',
+        amount: '500',
+        category: '',
+        frequency: 'monthly',
+        next_date: '2026-07-01',
+      },
+      categories,
+    )
+    expect(errors.category).toBe('Category is required.')
+  })
+
+  it('requires amount and next date', () => {
+    const errors = validateRecurring(
+      {
+        type: 'expense',
+        amount: '',
+        category: 'Rent',
+        frequency: 'monthly',
+        next_date: '',
+      },
+      categories,
+    )
+    expect(errors.amount).toBe('Enter an amount.')
+    expect(errors.next_date).toBe('Choose the next date.')
   })
 })

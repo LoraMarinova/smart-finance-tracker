@@ -62,8 +62,24 @@ class TransactionCreate(TransactionBase):
     pass
 
 
-class TransactionUpdate(TransactionBase):
-    pass
+class TransactionUpdate(BaseModel):
+    type: TransactionType | None = None
+    amount: Decimal | None = Field(default=None, gt=0, decimal_places=2)
+    category: (
+        Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)] | None
+    ) = None
+    description: str | None = None
+    date: datetime | None = None
+
+    @field_validator("category")
+    @classmethod
+    def category_matches_type(cls, category: str | None, info) -> str | None:
+        if category is None:
+            return category
+        tx_type = info.data.get("type")
+        if tx_type is not None:
+            return _validate_category_for_type(category, tx_type)
+        return category
 
 
 class TransactionRead(BaseModel):
@@ -202,8 +218,11 @@ class GoalCreate(GoalBase):
     current_amount: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
 
 
-class GoalUpdate(GoalBase):
-    current_amount: Decimal = Field(default=Decimal("0"), ge=0, decimal_places=2)
+class GoalUpdate(BaseModel):
+    name: NonEmptyStr | None = None
+    target_amount: Decimal | None = Field(default=None, gt=0, decimal_places=2)
+    target_date: datetime | None = None
+    current_amount: Decimal | None = Field(default=None, ge=0, decimal_places=2)
 
 
 class GoalContribute(BaseModel):

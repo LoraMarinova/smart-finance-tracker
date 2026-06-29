@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   contributeToGoal,
   createGoal,
@@ -102,11 +102,18 @@ function AppContent() {
   const [dashboardLoading, setDashboardLoading] = useState(true)
   const [panelsLoading, setPanelsLoading] = useState(true)
   const [loadError, setLoadError] = useState(null)
+  const [dashboardError, setDashboardError] = useState(null)
   const [retrying, setRetrying] = useState(false)
+
+  const txRequestRef = useRef(0)
 
   const [editing, setEditing] = useState(null)
   const [submitting, setSubmitting] = useState(false)
   const [formError, setFormError] = useState(null)
+  const [transactionError, setTransactionError] = useState(null)
+  const [budgetError, setBudgetError] = useState(null)
+  const [recurringError, setRecurringError] = useState(null)
+  const [goalError, setGoalError] = useState(null)
   const [busyId, setBusyId] = useState(null)
   const [addFormKey, setAddFormKey] = useState(0)
   const [exporting, setExporting] = useState(false)
@@ -128,8 +135,10 @@ function AppContent() {
   const dateFilters = useMemo(() => toDateFilters(filters), [filters])
 
   const refreshTransactions = useCallback(
-    async (page = pagination.page) => {
+    async (page = 1) => {
+      const requestId = ++txRequestRef.current
       const data = await getTransactions(toApiFilters(filters, page, pageSize))
+      if (requestId !== txRequestRef.current) return
       setTransactions(data?.transactions ?? [])
       setStats(data?.stats ?? EMPTY_STATS)
       setPagination({
@@ -138,7 +147,7 @@ function AppContent() {
         total_pages: data?.total_pages ?? 0,
       })
     },
-    [filters, pageSize, pagination.page],
+    [filters, pageSize],
   )
 
   const refreshAnalytics = useCallback(async () => {
@@ -159,6 +168,7 @@ function AppContent() {
   const refreshDashboard = useCallback(async () => {
     const data = await getDashboard()
     setDashboard(data)
+    setDashboardError(null)
   }, [])
 
   const refreshGoals = useCallback(async () => {
@@ -206,9 +216,14 @@ function AppContent() {
     })
     getDashboard()
       .then((data) => {
-        if (active) setDashboard(data)
+        if (active) {
+          setDashboard(data)
+          setDashboardError(null)
+        }
       })
-      .catch(() => {})
+      .catch((err) => {
+        if (active) setDashboardError(err.message)
+      })
       .finally(() => {
         if (active) setDashboardLoading(false)
       })
@@ -221,6 +236,8 @@ function AppContent() {
     let active = true
     setLoading(true)
     setChartsLoading(true)
+    txRequestRef.current += 1
+    const requestId = txRequestRef.current
 
     Promise.all([
       getTransactions(toApiFilters(filters, 1, pageSize)),
@@ -228,7 +245,7 @@ function AppContent() {
       getBudgets(dateFilters),
     ])
       .then(([txData, analyticsData, budgetData]) => {
-        if (!active) return
+        if (!active || requestId !== txRequestRef.current) return
         setTransactions(txData?.transactions ?? [])
         setStats(txData?.stats ?? EMPTY_STATS)
         setPagination({
@@ -252,6 +269,7 @@ function AppContent() {
 
     return () => {
       active = false
+      txRequestRef.current += 1
     }
   }, [filters, dateFilters, pageSize])
 
@@ -326,50 +344,54 @@ function AppContent() {
     setFormError(null)
   }, [])
 
-  const handleDeleteRequest = useCallback((id) => {
-    setConfirm({
-      title: 'Delete transaction?',
-      message: 'This cannot be undone.',
-      confirmLabel: 'Delete',
-      onConfirm: async () => {
-        setConfirm(null)
-        setBusyId(id)
-        try {
-          await deleteTransaction(id)
-          showToast('Transaction deleted.', 'info')
-          await refreshAll(pagination.page)
-          setEditing((curr) => (curr && curr.id === id ? null : curr))
-        } catch (err) {
-          setLoadError(err.message)
-        } finally {
-          setBusyId(null)
-        }
-      },
-    })
-  }, [pagination.page, refreshAll, showToast])
+  const handleDeleteRequest = useCallback(
+    (id) => {
+      setTransactionError(null)
+      setConfirm({
+        title: 'Delete transaction?',
+        message: 'This cannot be undone.',
+        confirmLabel: 'Delete',
+        onConfirm: async () => {
+          setConfirm(null)
+          setBusyId(id)
+          setTransactionError(null)
+          try {
+            await deleteTransaction(id)
+            showToast('Transaction deleted.', 'info')
+            await refreshAll(pagination.page)
+            setEditing((curr) => (curr && curr.id === id ? null : curr))
+          } catch (err) {
+            setTransactionError(err.message)
+          } finally {
+            setBusyId(null)
+          }
+        },
+      })
+    },
+    [pagination.page, refreshAll, showToast],
+  )
 
   const handleExport = useCallback(async () => {
     setExporting(true)
     try {
-      const csv = await exportTransactions(toApiFilters(filters, 1, pageSize))
+      const csv = await exportTransactions(toDateFilters(filters))
       downloadCsv(csv)
       showToast('CSV exported.')
     } catch (err) {
-      setLoadError(err.message)
+      showToast(err.message, 'error')
     } finally {
       setExporting(false)
     }
-  }, [filters, pageSize, showToast])
+  }, [filters, showToast])
 
   const handleSetBudget = useCallback(
     async (payload) => {
       setBudgetBusy(true)
+      setBudgetError(null)
       try {
         await setBudget(payload)
         showToast('Budget saved.')
         await refreshBudgets()
-      } catch (err) {
-        setLoadError(err.message)
       } finally {
         setBudgetBusy(false)
       }
@@ -386,12 +408,13 @@ function AppContent() {
         onConfirm: async () => {
           setConfirm(null)
           setBudgetBusy(true)
+          setBudgetError(null)
           try {
             await deleteBudget(id)
             showToast('Budget removed.', 'info')
             await refreshBudgets()
           } catch (err) {
-            setLoadError(err.message)
+            setBudgetError(err.message)
           } finally {
             setBudgetBusy(false)
           }
@@ -403,18 +426,15 @@ function AppContent() {
 
   const handleCreateRecurring = useCallback(
     async (payload) => {
-      try {
-        await createRecurring({
-          ...payload,
-          next_date: `${payload.next_date}T00:00:00`,
-        })
-        showToast('Recurring template added.')
-        // A due template is auto-posted on create, so refresh everything (list,
-        // dashboard, analytics) — not just the recurring panel.
-        await refreshAll(pagination.page)
-      } catch (err) {
-        setLoadError(err.message)
-      }
+      setRecurringError(null)
+      await createRecurring({
+        ...payload,
+        next_date: `${payload.next_date}T00:00:00`,
+      })
+      showToast('Recurring template added.')
+      // A due template is auto-posted on create, so refresh everything (list,
+      // dashboard, analytics) — not just the recurring panel.
+      await refreshAll(pagination.page)
     },
     [pagination.page, refreshAll, showToast],
   )
@@ -422,13 +442,14 @@ function AppContent() {
   const handlePostRecurring = useCallback(
     async (id) => {
       setRecurringBusyId(id)
+      setRecurringError(null)
       try {
         await postRecurring(id)
         showToast('Recurring transaction posted.')
         await refreshAll(pagination.page)
         await refreshRecurring()
       } catch (err) {
-        setLoadError(err.message)
+        setRecurringError(err.message)
       } finally {
         setRecurringBusyId(null)
       }
@@ -445,12 +466,13 @@ function AppContent() {
         onConfirm: async () => {
           setConfirm(null)
           setRecurringBusyId(id)
+          setRecurringError(null)
           try {
             await deleteRecurring(id)
             showToast('Recurring template deleted.', 'info')
             await refreshRecurring()
           } catch (err) {
-            setLoadError(err.message)
+            setRecurringError(err.message)
           } finally {
             setRecurringBusyId(null)
           }
@@ -463,12 +485,11 @@ function AppContent() {
   const handleCreateGoal = useCallback(
     async (payload) => {
       setGoalBusy(true)
+      setGoalError(null)
       try {
         await createGoal(payload)
         showToast('Goal added.')
         await refreshGoals()
-      } catch (err) {
-        setLoadError(err.message)
       } finally {
         setGoalBusy(false)
       }
@@ -479,12 +500,11 @@ function AppContent() {
   const handleContributeGoal = useCallback(
     async (id, amount) => {
       setGoalBusyId(id)
+      setGoalError(null)
       try {
         await contributeToGoal(id, amount)
         showToast('Contribution added.')
         await refreshGoals()
-      } catch (err) {
-        setLoadError(err.message)
       } finally {
         setGoalBusyId(null)
       }
@@ -501,12 +521,13 @@ function AppContent() {
         onConfirm: async () => {
           setConfirm(null)
           setGoalBusyId(id)
+          setGoalError(null)
           try {
             await deleteGoal(id)
             showToast('Goal deleted.', 'info')
             await refreshGoals()
           } catch (err) {
-            setLoadError(err.message)
+            setGoalError(err.message)
           } finally {
             setGoalBusyId(null)
           }
@@ -530,104 +551,117 @@ function AppContent() {
         </div>
       </header>
 
-      {loadError ? (
-        <ErrorState
-          message={loadError}
-          onRetry={handleRetry}
-          retrying={retrying}
+      <main id="main-content">
+        {loadError ? (
+          <ErrorState message={loadError} onRetry={handleRetry} retrying={retrying} />
+        ) : null}
+
+        <DashboardCards
+          data={dashboard}
+          loading={dashboardLoading}
+          error={dashboardError}
         />
-      ) : null}
 
-      <DashboardCards data={dashboard} loading={dashboardLoading} />
+        <BalanceSummary
+          totalIncome={stats.total_income}
+          totalExpense={stats.total_expense}
+          balance={stats.balance}
+          monthlyTrend={monthlyTrend}
+        />
 
-      <BalanceSummary
-        totalIncome={stats.total_income}
-        totalExpense={stats.total_expense}
-        balance={stats.balance}
-        monthlyTrend={monthlyTrend}
-      />
+        <section className="panel charts-section">
+          <h2 className="section-title">Analytics</h2>
+          <ChartsPanel analytics={analytics} loading={chartsLoading} />
+        </section>
 
-      <section className="panel charts-section">
-        <h2 className="section-title">Analytics</h2>
-        <ChartsPanel analytics={analytics} loading={chartsLoading} />
-      </section>
+        <TransactionForm
+          key={editing ? editing.id : `new-${addFormKey}`}
+          editing={editing}
+          categories={categories}
+          onSubmit={handleSubmit}
+          onCancel={handleCancelEdit}
+          submitting={submitting}
+          serverError={formError}
+        />
 
-      <TransactionForm
-        key={editing ? editing.id : `new-${addFormKey}`}
-        editing={editing}
-        categories={categories}
-        onSubmit={handleSubmit}
-        onCancel={handleCancelEdit}
-        submitting={submitting}
-        serverError={formError}
-      />
+        <FilterBar
+          filters={filters}
+          categories={categories}
+          onChange={handleFiltersChange}
+          onExport={handleExport}
+          exporting={exporting}
+        />
 
-      <FilterBar
-        filters={filters}
-        categories={categories}
-        onChange={handleFiltersChange}
-        onExport={handleExport}
-        exporting={exporting}
-      />
+        <section className="list-section">
+          <h2 className="section-title">Transactions</h2>
+          {transactionError ? (
+            <p className="form-error" role="alert">
+              {transactionError}
+            </p>
+          ) : null}
+          {loading ? (
+            <TableSkeleton rows={pageSize > 10 ? 10 : pageSize} />
+          ) : (
+            <TransactionList
+              transactions={transactions}
+              onEdit={handleEdit}
+              onDelete={handleDeleteRequest}
+              busyId={busyId}
+              page={pagination.page}
+              totalPages={pagination.total_pages}
+              total={pagination.total}
+              onPageChange={handlePageChange}
+              pageSize={pageSize}
+              pageSizeOptions={PAGE_SIZE_OPTIONS}
+              onPageSizeChange={handlePageSizeChange}
+            />
+          )}
+        </section>
 
-      <section className="list-section">
-        <h2 className="section-title">Transactions</h2>
-        {loading ? (
-          <TableSkeleton rows={pageSize > 10 ? 10 : pageSize} />
-        ) : (
-          <TransactionList
-            transactions={transactions}
-            onEdit={handleEdit}
-            onDelete={handleDeleteRequest}
-            busyId={busyId}
-            page={pagination.page}
-            totalPages={pagination.total_pages}
-            total={pagination.total}
-            onPageChange={handlePageChange}
-            pageSize={pageSize}
-            pageSizeOptions={PAGE_SIZE_OPTIONS}
-            onPageSizeChange={handlePageSizeChange}
+        <div className="side-panels">
+          <BudgetPanel
+            budgets={budgets}
+            categories={categories}
+            onSetBudget={handleSetBudget}
+            onDeleteBudget={handleDeleteBudget}
+            busy={budgetBusy}
+            loading={panelsLoading}
+            actionError={budgetError}
+            onClearActionError={() => setBudgetError(null)}
           />
-        )}
-      </section>
+          <RecurringPanel
+            items={recurring}
+            categories={categories}
+            onCreate={handleCreateRecurring}
+            onDelete={handleDeleteRecurring}
+            onPost={handlePostRecurring}
+            busyId={recurringBusyId}
+            loading={panelsLoading}
+            actionError={recurringError}
+            onClearActionError={() => setRecurringError(null)}
+          />
+          <GoalPanel
+            goals={goals}
+            onCreate={handleCreateGoal}
+            onContribute={handleContributeGoal}
+            onDelete={handleDeleteGoal}
+            busy={goalBusy}
+            busyId={goalBusyId}
+            loading={panelsLoading}
+            actionError={goalError}
+            onClearActionError={() => setGoalError(null)}
+          />
+        </div>
 
-      <div className="side-panels">
-        <BudgetPanel
-          budgets={budgets}
-          categories={categories}
-          onSetBudget={handleSetBudget}
-          onDeleteBudget={handleDeleteBudget}
-          busy={budgetBusy}
-          loading={panelsLoading}
+        <ConfirmDialog
+          open={Boolean(confirm)}
+          title={confirm?.title}
+          message={confirm?.message}
+          confirmLabel={confirm?.confirmLabel}
+          onConfirm={confirm?.onConfirm}
+          onCancel={() => setConfirm(null)}
         />
-        <RecurringPanel
-          items={recurring}
-          categories={categories}
-          onCreate={handleCreateRecurring}
-          onDelete={handleDeleteRecurring}
-          onPost={handlePostRecurring}
-          busyId={recurringBusyId}
-          loading={panelsLoading}
-        />
-        <GoalPanel
-          goals={goals}
-          onCreate={handleCreateGoal}
-          onContribute={handleContributeGoal}
-          onDelete={handleDeleteGoal}
-          busy={goalBusy}
-          busyId={goalBusyId}
-          loading={panelsLoading}
-        />
-      </div>
-
-      <ConfirmDialog
-        open={Boolean(confirm)}
-        title={confirm?.title}
-        message={confirm?.message}
-        confirmLabel={confirm?.confirmLabel}
-        onConfirm={confirm?.onConfirm}
-        onCancel={() => setConfirm(null)}
-      />
+      </main>
     </div>
   )
 }
